@@ -38,13 +38,19 @@
             getDoc 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // Firebase yapılandırma bilgileri
+        // TODO: Firebase projenizden aldığınız gerçek yapılandırma bilgilerini buraya yapıştırın.
+        // ÖNEMLİ: API anahtarınızı ve diğer hassas bilgilerinizi doğrudan istemci tarafı koduna GÖMMEYİN.
+        // Bu sadece bir ÖRNEKTİR ve geliştirme amaçlıdır.
+        // Gerçek bir uygulamada, Firebase Hosting'in otomatik yapılandırmasını kullanın veya 
+        // Firebase Functions gibi bir backend aracılığıyla yapılandırmayı güvenli bir şekilde sağlayın.
         const firebaseConfig = {
-          apiKey: "AIzaSyCCML1QJZWGQbIHFtr7iohPzT11E5RBONo",
-          authDomain: "yapilacaklarlistesi-aa004.firebaseapp.com",
-          projectId: "yapilacaklarlistesi-aa004",
-          storageBucket: "yapilacaklarlistesi-aa004.firebasestorage.app",
-          messagingSenderId: "582402705694",
-          appId: "1:582402705694:web:3eb74e683ada3e8d56e10f"
+          apiKey: "YOUR_API_KEY", // GERÇEK API ANAHTARINIZI BURAYA GİRİN
+          authDomain: "YOUR_AUTH_DOMAIN", //örn: projem.firebaseapp.com
+          projectId: "YOUR_PROJECT_ID",
+          storageBucket: "YOUR_STORAGE_BUCKET", // örn: projem.appspot.com
+          messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+          appId: "YOUR_APP_ID" // örn: 1:1234567890:web:abcdef123456
         };
 
         // Uygulama Kimliği (Geliştirme Ortamı için Varsayılan)
@@ -979,9 +985,13 @@
                     activeListId = listId;
                     renderAppUI(); 
 
-                    if (window.innerWidth < 768) { // Mobil ekran (md breakpoint altı)
-                        if (listsPanel) listsPanel.classList.add('-translate-x-full');
-                        if (sidebarOverlay) sidebarOverlay.classList.add('hidden');
+                    if (window.innerWidth < 768) {
+                        if (listsPanel) {
+                            listsPanel.classList.add('-translate-x-full');
+                        }
+                        if (sidebarOverlay) {
+                            sidebarOverlay.classList.add('hidden');
+                        }
                     }
                 });
                 listsContainerEl.appendChild(listItemEl);
@@ -1432,7 +1442,8 @@
                     e.preventDefault(); 
                     if(signupForm) signupForm.classList.add('hidden'); 
                     if(loginForm) loginForm.classList.remove('hidden'); 
-                    clearAuthError(); 
+                    clearAuthError();
+
                 });
             }
             
@@ -1452,17 +1463,32 @@
                 }); // addListButton kapanış parantezi
             } // addListButton if bloğu kapanışı
 
-            // Hamburger menü butonları (Doğru yer)
+            if (addListButton) {
+                setTimeout(() => {
+                    addListButton.textContent = 'Liste Ekle';
+                }, 100);
+            }
+
             if(hamburgerButton) {
                 hamburgerButton.addEventListener('click', () => {
-                    if(listsPanel) listsPanel.classList.remove('-translate-x-full');
-                    if(sidebarOverlay) sidebarOverlay.classList.remove('hidden');
+                    if(listsPanel) {
+                        listsPanel.classList.remove('-translate-x-full');
+                        listsPanel.style.zIndex = '1050';
+                    }
+                    if(sidebarOverlay) {
+                        sidebarOverlay.classList.remove('hidden');
+                        sidebarOverlay.style.zIndex = '1040';
+                    }
                 });
             }
             if(sidebarOverlay) {
                 sidebarOverlay.addEventListener('click', () => {
-                    if(listsPanel) listsPanel.classList.add('-translate-x-full');
-                    if(sidebarOverlay) sidebarOverlay.classList.add('hidden');
+                    if(listsPanel) {
+                        listsPanel.classList.add('-translate-x-full');
+                    }
+                    if(sidebarOverlay) {
+                        sidebarOverlay.classList.add('hidden');
+                    }
                 });
             }
             
@@ -1556,14 +1582,6 @@
             width: 180px; /* Menü genişliği */
             overflow: hidden; /* Butonlar taşarsa gizle (güvenlik) */
         }
-
-        #listsPanel {
-            z-index: 1050 !important;
-        }
-        #sidebarOverlay {
-            z-index: 1040 !important;
-        }
-
         .kebab-dropdown button {
             display: flex;
             align-items: center; /* İkon ve metni hizala */
@@ -1614,10 +1632,6 @@
                     <div>
                         <label for="newListInput" class="sr-only">Yeni liste adı</label>
                         <input type="text" id="newListInput" placeholder="Yeni liste adı..." class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
-                    </div>
-                    <div>
-                        <button id="addListButton" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-600 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500">
-                        </button>
                     </div>
                 </div>
             </div>
