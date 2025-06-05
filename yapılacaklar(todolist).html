@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yapılacaklar Listesi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script type="module">
+        // Firebase SDK'larını içe aktar
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            onAuthStateChanged,
+            createUserWithEmailAndPassword,
+            signInWithEmailAndPassword,
+            signOut as firebaseSignOut,
+            signInWithCustomToken,
+            GoogleAuthProvider, // Google Auth Provider import edildi
+            signInWithPopup     // signInWithPopup import edildi
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            addDoc, 
+            deleteDoc, 
+            onSnapshot, 
+            collection, 
+            query, 
+            serverTimestamp, 
+            updateDoc, 
+            orderBy, 
+            writeBatch, 
+            getDocs, 
+            where,
+            limit 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase yapılandırması 
+        const firebaseConfig = {
+          apiKey: "AIzaSyCCML1QJZWGQbIHFtr7iohPzT11E5RBONo", 
+          authDomain: "yapilacaklarlistesi-aa004.firebaseapp.com",
+          projectId: "yapilacaklarlistesi-aa004",
+          storageBucket: "yapilacaklarlistesi-aa004.appspot.com", 
+          messagingSenderId: "582402705694",
+          appId: "1:582402705694:web:3eb74e683ada3e8d56e10f"
+        };
+
+        // Uygulama Kimliği
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'todo-app-rebuild-google-auth';
+
+        const app = initializeApp(firebaseConfig);
+        console.log("Firebase App Initialized:", app.name); 
+
+        let db, authInstance; 
+
+        try {
+            db = getFirestore(app);
+            console.log("Firestore DB Initialized"); 
+        } catch (e) {
+            console.error("Firestore başlatılırken hata oluştu:", e);
+            showAppErrorModal("Firestore başlatılamadı. Lütfen Firebase ayarlarınızı ve Firestore veritabanı kurulumunuzu kontrol edin.");
+        }
+
+        try {
+            authInstance = getAuth(app); 
+            console.log("Firebase Auth Initialized");
+        } catch (e) {
+            console.error("Firebase Auth başlatılırken hata oluştu:", e);
+            showAppErrorModal("Kimlik doğrulama servisi başlatılamadı.");
+        }
+        
+        let userId = null;
+        let todosCollectionRef = null;
+        let listsCollectionRef = null;
+        let unsubscribeTodos = null;
+        let unsubscribeLists = null;
+        
+        let localTasksCache = []; 
+        let localListsCache = [];
+        let activeListId = null;
+        let defaultListTodayId = null;
+        let defaultListLaterId = null;
+
+        // --- UI Elementleri ---
+        const authContainer = document.getElementById('authContainer');
+        const appMainContainer = document.getElementById('appMainContainer'); 
+        const listsPanel = document.getElementById('listsPanel'); 
+        const tasksPanel = document.getElementById('tasksPanel'); 
+        const loginForm = document.getElementById('loginForm');
+        const signupForm = document.getElementById('signupForm');
+        const loginEmailInput = document.getElementById('loginEmail');
+        const loginPasswordInput = document.getElementById('loginPassword');
+        const signupEmailInput = document.getElementById('signupEmail');
+        const signupPasswordInput = document.getElementById('signupPassword');
+        const loginButton = document.getElementById('loginButton');
+        const signupButton = document.getElementById('signupButton');
+        const googleLoginButton = document.getElementById('googleLoginButton'); // Google giriş butonu
+        const switchToSignup = document.getElementById('switchToSignup');
+        const switchToLogin = document.getElementById('switchToLogin');
+        const logoutButton = document.getElementById('logoutButton');
+        const authErrorMessages = document.getElementById('authErrorMessages');
+        const taskInput = document.getElementById('taskInput');
+        const listSelectorForNewTask = document.getElementById('listSelectorForNewTask');
+        const addTaskButton = document.getElementById('addTaskButton');
+        const listsContainerEl = document.getElementById('listsContainer'); 
+        const addListButton = document.getElementById('addListButton');
+        const newListInput = document.getElementById('newListInput');
+        const activeListNameHeader = document.getElementById('activeListNameHeader'); 
+        const activeTaskList = document.getElementById('activeTaskList');
+        const noTasksInListMessage = document.getElementById('noTasksInListMessage');
+        const globalNoListsMessage = document.getElementById('globalNoListsMessage');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const authStatusDisplay = document.getElementById('authStatus'); 
+        const userIdDisplayElement = document.getElementById('userIdDisplay'); 
+        const errorModal = document.getElementById('errorModal');
+        const errorMessage = document.getElementById('errorMessage');
+        const closeErrorModalButton = document.getElementById('closeErrorModalButton');
+        const geminiLoadingModal = document.getElementById('geminiLoadingModal');
+        const geminiLoadingModalTitle = document.getElementById('geminiLoadingModalTitle');
+        const geminiLoadingModalDescription = document.getElementById('geminiLoadingModalDescription');
+
+        function showAppErrorModal(message) {
+            if(errorMessage) errorMessage.textContent = message;
+            if(errorModal) errorModal.classList.remove('hidden');
+        }
+        if(closeErrorModalButton) closeErrorModalButton.addEventListener('click', () => errorModal.classList.add('hidden'));
+
+        function showAuthError(message) {
+            if(authErrorMessages) {
+                authErrorMessages.textContent = message;
+                authErrorMessages.classList.remove('hidden');
+            }
+        }
+        function clearAuthError() {
+            if(authErrorMessages) {
+                authErrorMessages.textContent = '';
+                authErrorMessages.classList.add('hidden');
+            }
+        }
+        
+        // --- Kimlik Doğrulama Fonksiyonları ---
+        async function handleSignup(e) {
+            e.preventDefault();
+            if (!authInstance) { showAuthError("Kimlik doğrulama servisi hazır değil."); return; } 
+            clearAuthError();
+            const email = signupEmailInput.value;
+            const password = signupPasswordInput.value;
+            if (!email || !password) {
+                showAuthError("E-posta ve şifre boş bırakılamaz.");
+                return;
+            }
+            if (password.length < 6) {
+                showAuthError("Şifre en az 6 karakter olmalıdır.");
+                return;
+            }
+            signupButton.disabled = true;
+            signupButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>Kaydolunuyor...`;
+            try {
+                await createUserWithEmailAndPassword(authInstance, email, password);
+            } catch (error) {
+                console.error("Signup error:", error.code, error.message);
+                if (error.code === 'auth/email-already-in-use') {
+                    showAuthError("Bu e-posta adresi zaten kayıtlı. Lütfen giriş yapmayı deneyin.");
+                } else if (error.code === 'auth/weak-password') {
+                    showAuthError("Şifre zayıf. Lütfen daha güçlü bir şifre seçin.");
+                } else {
+                    showAuthError(`Kayıt hatası: ${error.message}`);
+                }
+            } finally {
+                signupButton.disabled = false;
+                signupButton.textContent = "Kaydol";
+            }
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            if (!authInstance) { showAuthError("Kimlik doğrulama servisi hazır değil."); return; } 
+            clearAuthError();
+            const email = loginEmailInput.value;
+            const password = loginPasswordInput.value;
+            if (!email || !password) {
+                showAuthError("E-posta ve şifre boş bırakılamaz.");
+                return;
+            }
+            loginButton.disabled = true;
+            loginButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>Giriş Yapılıyor...`;
+            try {
+                await signInWithEmailAndPassword(authInstance, email, password);
+            } catch (error) {
+                console.error("Login error:", error.code, error.message);
+                 if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                    showAuthError("Geçersiz e-posta veya şifre.");
+                } else {
+                    showAuthError(`Giriş hatası: ${error.message}`);
+                }
+            } finally {
+                loginButton.disabled = false;
+                loginButton.textContent = "Giriş Yap";
+            }
+        }
+
+        async function handleGoogleLogin() {
+            if (!authInstance) { showAuthError("Kimlik doğrulama servisi hazır değil."); return; }
+            clearAuthError();
+            const provider = new GoogleAuthProvider();
+            googleLoginButton.disabled = true;
+            googleLoginButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Google ile Giriş Yapılıyor...`;
+            try {
+                await signInWithPopup(authInstance, provider);
+                // onAuthStateChanged tetiklenecek ve UI güncellenecek
+            } catch (error) {
+                console.error("Google login error:", error.code, error.message);
+                if (error.code === 'auth/popup-closed-by-user') {
+                    showAuthError("Giriş penceresi kapatıldı.");
+                } else if (error.code === 'auth/account-exists-with-different-credential') {
+                     showAuthError("Bu e-posta ile farklı bir yöntemle daha önce giriş yapılmış. Lütfen o yöntemle giriş yapın.");
+                }
+                else {
+                    showAuthError(`Google ile giriş hatası: ${error.message}`);
+                }
+            } finally {
+                googleLoginButton.disabled = false;
+                googleLoginButton.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.223,0-9.657-3.356-11.303-8H6.306C9.656,39.663,16.318,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l0.001-0.001l6.19,5.238C39.903,38.635,44,31.886,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>Google ile Giriş Yap`;
+            }
+        }
+
+
+        async function handleLogout() {
+            if (!authInstance) { showAppErrorModal("Kimlik doğrulama servisi hazır değil."); return; } 
+            logoutButton.disabled = true;
+            try {
+                await firebaseSignOut(authInstance);
+            } catch (error) {
+                console.error("Logout error:", error);
+                showAppErrorModal(`Çıkış yaparken hata: ${error.message}`);
+            } finally {
+                logoutButton.disabled = false;
+            }
+        }
+        
+        // --- Liste Yönetimi Fonksiyonları ve Diğerleri ---
+        // (ensureDefaultListsExist, handleAddNewList, updateListName, deleteUserList, 
+        // addTaskToFirestore, callGeminiAPI, getNextOrderValue, breakDownTaskIntoSubtasks, 
+        // elaborateTask, addTaskFromInput, toggleTaskCompleted, deleteTask, updateTaskText, 
+        // moveTask, promoteTaskToMain, renderListsUI, renderTaskNode, renderAppUI, 
+        // listenToUserSpecificData)
+        // Bu fonksiyonlar bir önceki yanıttaki gibi kalacak.
+        // Sadece en alttaki onAuthStateChanged ve window.onload içindeki event listener'lar güncellenecek.
+        async function ensureDefaultListsExist() {
+            if (!userId || !db) return;
+            const userListsCollectionRef = collection(db, "artifacts", appId, "users", userId, "lists");
+            
+            const q = query(userListsCollectionRef, limit(1));
+            const snapshot = await getDocs(q);
+
+            if (snapshot.empty) {
+                console.log("Kullanıcı için liste bulunamadı, varsayılanlar oluşturuluyor...");
+                try {
+                    const todayData = { name: "Bugün Yapılacaklar", order: 1, createdAt: serverTimestamp(), isDeletable: false };
+                    const todayRef = await addDoc(userListsCollectionRef, todayData);
+                    defaultListTodayId = todayRef.id;
+                    
+                    const laterData = { name: "Daha Sonra Yapılacaklar", order: 2, createdAt: serverTimestamp(), isDeletable: false };
+                    const laterRef = await addDoc(userListsCollectionRef, laterData);
+                    defaultListLaterId = laterRef.id;
+                    
+                    console.log("Varsayılan listeler oluşturuldu:", defaultListTodayId, defaultListLaterId);
+                    if (!activeListId) activeListId = defaultListTodayId; 
+                } catch (error) {
+                    console.error("Varsayılan listeler oluşturulurken hata:", error);
+                    showAppErrorModal("Varsayılan listeler oluşturulamadı.");
+                }
+            } else {
+                 console.log("Mevcut listeler bulundu.");
+                 if (!activeListId && localListsCache.length > 0) {
+                    const sortedListsForActive = [...localListsCache].sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
+                    activeListId = sortedListsForActive[0].id;
+                 }
+            }
+        }
+
+        async function handleAddNewList() {
+            console.log("handleAddNewList: function entered."); 
+            if (!userId || !db) {
+                console.error("handleAddNewList: userId or db is not available."); 
+                showAppErrorModal("Giriş yapılmalı veya veritabanı hazır değil."); 
+                if(addListButton) { 
+                    addListButton.disabled = false;
+                    addListButton.textContent = "Liste Ekle";
+                }
+                return;
+            }
+
+            if (!newListInput) {
+                console.error("handleAddNewList: newListInput element not found.");
+                showAppErrorModal("Liste adı giriş alanı bulunamadı.");
+                return;
+            }
+            const listName = newListInput.value.trim();
+
+            if (!listName) {
+                console.warn("handleAddNewList: List name is empty."); 
+                showAppErrorModal("Liste adı boş olamaz.");
+                if(addListButton) { 
+                    addListButton.disabled = false;
+                    addListButton.textContent = "Liste Ekle";
+                }
+                return;
+            }
+ 
+            if (addListButton) {
+                addListButton.disabled = true;
+                addListButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>Ekleniyor...`;
+                console.log("handleAddNewList: addListButton disabled and text changed to 'Ekleniyor...'.");
+            } else {
+                console.warn("handleAddNewList: addListButton element not found when trying to disable.");
+            }
+
+            try {
+                console.log("handleAddNewList: Attempting to add list to Firestore.");
+                if (!listsCollectionRef) { 
+                     listsCollectionRef = collection(db, "artifacts", appId, "users", userId, "lists");
+                     console.log("handleAddNewList: listsCollectionRef re-initialized.");
+                }
+                const newOrder = localListsCache.length > 0 ? Math.max(...localListsCache.map(l => l.data.order || 0)) + 1 : 1;
+                await addDoc(listsCollectionRef, { 
+                    name: listName,
+                    order: newOrder,
+                    createdAt: serverTimestamp(),
+                    isDeletable: true 
+                });
+                console.log("handleAddNewList: List added to Firestore successfully.");
+                if(newListInput) newListInput.value = "";
+            } catch (error) {
+                console.error("handleAddNewList: Error adding new list to Firestore:", error);
+                showAppErrorModal("Yeni liste eklenemedi: " + error.message);
+            } finally {
+                console.log("handleAddNewList: finally block reached.");
+                if (addListButton) { 
+                    addListButton.disabled = false;
+                    addListButton.textContent = "Liste Ekle";
+                    console.log("handleAddNewList: addListButton re-enabled and text reset.");
+                } else {
+                    console.warn("handleAddNewList: addListButton element not found in finally block.");
+                }
+            }
+        }
+
+        async function updateListName(listId, newName) {
+            if (!userId || !db) return false;
+            if (!newName.trim()) {
+                showAppErrorModal("Liste adı boş olamaz.");
+                return false; 
+            }
+            const listDocRef = doc(db, "artifacts", appId, "users", userId, "lists", listId);
+            try {
+                await updateDoc(listDocRef, { name: newName });
+                return true; 
+            } catch (error) {
+                console.error("Liste adı güncellenirken hata:", error);
+                showAppErrorModal(`Liste adı güncellenemedi: ${error.message}`);
+                return false; 
+            }
+        }
+        
+        async function deleteUserList(listId) {
+            if (!userId || !db) return;
+            const listToDelete = localListsCache.find(l => l.id === listId);
+            if (!listToDelete || listToDelete.data.isDeletable === false) { 
+                 showAppErrorModal("Bu liste silinemez.");
+                 return;
+            }
+            
+            const userTodosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
+            const userListsCollectionRef = collection(db, "artifacts", appId, "users", userId, "lists");
+
+            const batch = writeBatch(db);
+            const tasksInListQuery = query(userTodosCollectionRef, where("listId", "==", listId));
+            try {
+                const tasksSnapshot = await getDocs(tasksInListQuery);
+                tasksSnapshot.forEach(taskDoc => {
+                    batch.delete(doc(userTodosCollectionRef, taskDoc.id));
+                });
+
+                const listDocRef = doc(userListsCollectionRef, listId);
+                batch.delete(listDocRef);
+
+                await batch.commit();
+                console.log(`Liste "${listToDelete.data.name}" ve görevleri silindi.`);
+                if (activeListId === listId) { 
+                    activeListId = null; 
+                }
+            } catch (error) {
+                console.error("Liste silinirken hata:", error);
+                showAppErrorModal(`Liste silinemedi: ${error.message}`);
+            }
+        }
+
+        async function addTaskToFirestore(taskText, parentId = null, prefix = "", order = Date.now(), targetListId) {
+            const fullTaskText = prefix ? `${prefix} ${taskText}` : taskText;
+            if (fullTaskText.trim() === '') return Promise.resolve();  
+            if (!userId || !db) { 
+                showAppErrorModal('Görev eklemek için oturum açılmalı veya veritabanı hazır değil.');
+                return Promise.reject("Kullanıcı oturumu yok veya db referansı tanımsız.");
+            }
+            const currentTodosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
+
+            try {
+                const taskData = {
+                    text: fullTaskText,
+                    completed: false,
+                    createdAt: serverTimestamp(),
+                    order: order, 
+                    parentId: parentId,
+                    listId: targetListId 
+                };
+                await addDoc(currentTodosCollectionRef, taskData);
+                return Promise.resolve();
+            } catch (error) {
+                showAppErrorModal(`Görev Firestore'a eklenirken hata: ${error.message}`);
+                return Promise.reject(error);
+            }
+        }
+        
+        async function getNextOrderValue(parentId = null, targetListId = null) { 
+            if (!targetListId && !parentId) { 
+                targetListId = activeListId;
+            } else if (parentId && !targetListId) { 
+                const parentTask = localTasksCache.find(t => t.id === parentId);
+                targetListId = parentTask?.data.listId;
+            }
+
+            if (!targetListId) { 
+                console.warn("getNextOrderValue: Hedef listId belirlenemedi.");
+                return Date.now();
+            }
+
+            let relevantTasks;
+            if (parentId) { 
+                relevantTasks = localTasksCache.filter(t => t.data.parentId === parentId && t.data.listId === targetListId);
+            } else { 
+                relevantTasks = localTasksCache.filter(t => !t.data.parentId && t.data.listId === targetListId);
+            }
+            if (relevantTasks.length > 0) {
+                return Math.max(...relevantTasks.map(t => t.data.order || 0)) + 1;
+            }
+            return Date.now();
+        }
+
+        async function breakDownTaskIntoSubtasks(originalTaskId, originalTaskText, buttonElement, parentListId) {
+            if (!userId) { showAppErrorModal('Oturum açılmalı.'); return; }
+            buttonElement.disabled = true;
+            const originalButtonText = buttonElement.innerHTML; 
+            buttonElement.innerHTML = `<svg class="animate-spin h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg> Parçalıyor...`;
+            const prompt = `Bir yapılacaklar listesi için, şu ana görevi daha küçük, somut ve yönetilebilir alt görevlere ayır. Her bir alt görevi ayrı bir satırda listele. Sadece alt görevlerin listesini ver:\n\nAna Görev: "${originalTaskText}"`;
+
+            try {
+                const subtasksText = await callGeminiAPI(prompt, "✨ Görev Parçalanıyor", "Gemini alt görevleri oluşturuyor...");
+                if (subtasksText) {
+                    const subtaskList = subtasksText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                    if (subtaskList.length > 0) {
+                        let baseOrder = await getNextOrderValue(originalTaskId, parentListId); 
+                        for (let i = 0; i < subtaskList.length; i++) {
+                            await addTaskToFirestore(subtaskList[i], originalTaskId, "", baseOrder + i, parentListId); 
+                        }
+                    } else {
+                        showAppErrorModal("Gemini bu görev için alt görev oluşturamadı.");
+                    }
+                }
+            } finally {
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = originalButtonText;
+            }
+        }
+        
+        async function elaborateTask(originalTaskId, originalTaskText, buttonElement, parentListId) {
+             if (!userId) { showAppErrorModal('Oturum açılmalı.'); return; }
+            buttonElement.disabled = true;
+            const originalButtonText = buttonElement.innerHTML;
+            buttonElement.innerHTML = `<svg class="animate-spin h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg> Detaylıyor...`;
+            const prompt = `Kullanıcı yapılacaklar listesine şunu ekledi: '${originalTaskText}'. Bu görevin uygulanmasına yardımcı olmak için 3-5 adet soru, not veya alt adım içeren bir liste oluştur. Her maddeyi yeni satırda listele. Sadece listeyi ver:`;
+
+            try {
+                const elaboratedText = await callGeminiAPI(prompt, "✨ Görev Detaylandırılıyor", "Gemini fikirler üretiyor...");
+                if (elaboratedText) {
+                    const elaboratedPoints = elaboratedText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                    if (elaboratedPoints.length > 0) {
+                        let baseOrder = await getNextOrderValue(originalTaskId, parentListId); 
+                        for (let i = 0; i < elaboratedPoints.length; i++) {
+                            await addTaskToFirestore(elaboratedPoints[i], originalTaskId, "💡", baseOrder + i, parentListId); 
+                        }
+                    } else {
+                        showAppErrorModal("Gemini bu görev için detay önerisi oluşturamadı.");
+                    }
+                }
+            } finally {
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = originalButtonText;
+            }
+        }
+
+        async function addTaskFromInput() {
+            const taskText = taskInput.value.trim();
+            const selectedListId = listSelectorForNewTask.value; 
+            
+            if (taskText === '') { 
+                showAppErrorModal('Görev boş olamaz!'); 
+                return; 
+            }
+            if (!selectedListId) {
+                 showAppErrorModal('Lütfen bir liste seçin veya yeni bir liste oluşturun.');
+                 return;
+            }
+            if (!userId || !db) { 
+                showAppErrorModal('Görev eklemek için lütfen giriş yapın veya veritabanı bağlantısını kontrol edin.');
+                return;
+            }
+            
+            addTaskButton.disabled = true;
+            addTaskButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg> Ekleniyor...`;
+            
+            try {
+                const newOrder = await getNextOrderValue(null, selectedListId);
+                await addTaskToFirestore(taskText, null, "", newOrder, selectedListId); 
+                taskInput.value = ''; 
+                
+                if (activeListId !== selectedListId) { 
+                    activeListId = selectedListId;
+                    renderAppUI(); 
+                }
+            } catch (error) {
+                 console.error("Görev ekleme sırasında hata (addTaskFromInput):", error); 
+                 showAppErrorModal("Görev eklenirken bir sorun oluştu.");
+            }
+            finally { 
+                addTaskButton.disabled = false;
+                addTaskButton.textContent = "Ekle"; 
+            }
+        }
+        
+        async function toggleTaskCompleted(taskId, currentStatus) {
+             if (!userId || !db) { showAppErrorModal('Oturum açılmalı veya veritabanı hazır değil.'); return; }
+            const taskDocRef = doc(db, "artifacts", appId, "users", userId, "todos", taskId);
+            try { await updateDoc(taskDocRef, { completed: !currentStatus }); }
+            catch (error) { showAppErrorModal(`Görev güncellenirken hata: ${error.message}`); }
+        }
+
+        async function deleteTask(taskId) {
+            if (!userId || !db) { showAppErrorModal('Oturum açılmalı veya veritabanı hazır değil.'); return; }
+            const userTodosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
+            const batch = writeBatch(db);
+            const tasksToDeleteIds = [taskId];
+            function findDescendants(currentParentId) {
+                const directChildren = localTasksCache.filter(t => t.data.parentId === currentParentId);
+                for (const child of directChildren) {
+                    tasksToDeleteIds.push(child.id);
+                    findDescendants(child.id); 
+                }
+            }
+            findDescendants(taskId);
+            tasksToDeleteIds.forEach(idToDelete => {
+                batch.delete(doc(userTodosCollectionRef, idToDelete));
+            });
+            try { await batch.commit(); }
+            catch (error) { showAppErrorModal(`Görev(ler) silinirken hata: ${error.message}`); }
+        }
+        
+        async function updateTaskText(taskId, newText) {
+            if (!userId || !db) { showAppErrorModal('Oturum açılmalı veya veritabanı hazır değil.'); return; }
+            if (newText.trim() === '') { showAppErrorModal('Görev metni boş olamaz!'); return; }
+            const taskDocRef = doc(db, "artifacts", appId, "users", userId, "todos", taskId);
+            try { await updateDoc(taskDocRef, { text: newText }); }
+            catch (error) { showAppErrorModal(`Görev metni güncellenirken hata: ${error.message}`); }
+        }
+
+        async function moveTask(taskId, direction) { 
+             if (!userId || !db) { showAppErrorModal('Sıralama için oturum açılmalı.'); return; }
+            const currentTaskDoc = localTasksCache.find(t => t.id === taskId);
+            if (!currentTaskDoc) return;
+            
+            const parentId = currentTaskDoc.data.parentId;
+            const taskListId = currentTaskDoc.data.listId; 
+            
+            let siblings;
+            if (parentId) { 
+                siblings = localTasksCache.filter(t => t.data.parentId === parentId && t.data.listId === taskListId).sort((a,b) => a.data.order - b.data.order);
+            } else { 
+                siblings = localTasksCache.filter(t => !t.data.parentId && t.data.listId === taskListId).sort((a,b) => a.data.order - b.data.order);
+            }
+            
+            const taskIndex = siblings.findIndex(t => t.id === taskId);
+            if (taskIndex === -1) return;
+
+            let otherTaskIndex;
+            if (direction === 'up') {
+                if (taskIndex === 0) return; 
+                otherTaskIndex = taskIndex - 1;
+            } else { 
+                if (taskIndex === siblings.length - 1) return; 
+                otherTaskIndex = taskIndex + 1;
+            }
+
+            const task1 = siblings[taskIndex];
+            const task2 = siblings[otherTaskIndex];
+
+            const batch = writeBatch(db);
+            const task1Ref = doc(db, "artifacts", appId, "users", userId, "todos", task1.id);
+            const task2Ref = doc(db, "artifacts", appId, "users", userId, "todos", task2.id);
+            batch.update(task1Ref, { order: task2.data.order });
+            batch.update(task2Ref, { order: task1.data.order });
+            try { await batch.commit(); }
+            catch (error) { showAppErrorModal(`Görevler sıralanırken hata: ${error.message}`); }
+        }
+
+        async function promoteTaskToMain(taskId) { 
+            if (!userId || !db) { showAppErrorModal('Oturum açılmalı.'); return; }
+            const taskToPromote = localTasksCache.find(t => t.id === taskId);
+            if (!taskToPromote || !taskToPromote.data.parentId) return; 
+
+            const parentTask = localTasksCache.find(t => t.id === taskToPromote.data.parentId);
+            const targetListId = parentTask?.data.listId || activeListId; 
+
+            if (!targetListId) {
+                 showAppErrorModal("Hedef liste bulunamadı.");
+                 return;
+            }
+            
+            const newOrder = await getNextOrderValue(null, targetListId);
+
+            const taskDocRef = doc(db, "artifacts", appId, "users", userId, "todos", taskId);
+            try {
+                await updateDoc(taskDocRef, {
+                    parentId: null,
+                    order: newOrder,
+                    listId: targetListId 
+                });
+            } catch (error) {
+                showAppErrorModal(`Alt görev ana göreve taşınırken hata: ${error.message}`);
+            }
+        }
+        
+        // --- UI Render Fonksiyonları ---
+        function renderListsUI() {
+            if (!listsContainerEl) return;
+            listsContainerEl.innerHTML = '';
+            
+            const sortedLists = [...localListsCache].sort((a,b) => (a.data.order || 0) - (b.data.order || 0));
+
+            const tasksPanelExists = document.getElementById('tasksPanel');
+
+            if (sortedLists.length === 0 && userId) {
+                if(globalNoListsMessage) globalNoListsMessage.classList.remove('hidden');
+                if(tasksPanelExists) tasksPanelExists.classList.add('hidden'); 
+                if(listSelectorForNewTask) listSelectorForNewTask.innerHTML = '<option value="">Liste Yok</option>';
+                if(taskInput) taskInput.disabled = true;
+                if(addTaskButton) addTaskButton.disabled = true;
+                return;
+            } else {
+                 if(globalNoListsMessage) globalNoListsMessage.classList.add('hidden');
+                 if(tasksPanelExists) tasksPanelExists.classList.remove('hidden');
+                 if(taskInput) taskInput.disabled = false;
+                 if(addTaskButton) addTaskButton.disabled = false;
+            }
+
+            if (listSelectorForNewTask) {
+                listSelectorForNewTask.innerHTML = '';
+                sortedLists.forEach(listDoc => {
+                    const option = document.createElement('option');
+                    option.value = listDoc.id;
+                    option.textContent = listDoc.data.name;
+                    if (listDoc.id === activeListId) {
+                        option.selected = true;
+                    }
+                    listSelectorForNewTask.appendChild(option);
+                });
+            }
+
+            sortedLists.forEach(listDoc => {
+                const list = listDoc.data;
+                const listId = listDoc.id;
+
+                const listItemEl = document.createElement('div');
+                listItemEl.className = `list-item group flex items-center justify-between p-2 rounded-md cursor-pointer mb-1 transition-colors ${listId === activeListId ? 'bg-cyan-600 text-white' : 'hover:bg-gray-200 text-gray-700'}`;
+                listItemEl.dataset.listId = listId;
+
+                const listNameSpan = document.createElement('span');
+                listNameSpan.textContent = list.name;
+                listNameSpan.className = "flex-grow truncate list-name-span";
+                listItemEl.appendChild(listNameSpan);
+                
+                const listEditInput = document.createElement('input');
+                listEditInput.type = 'text';
+                listEditInput.value = list.name;
+                listEditInput.className = "hidden flex-grow bg-white text-gray-800 border border-cyan-500 rounded px-1 py-0.5 text-sm list-name-input";
+                listItemEl.appendChild(listEditInput);
+
+
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = "flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity";
+                
+                const editListButton = document.createElement('button');
+                editListButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ${listId === activeListId ? 'text-white/80 hover:text-white' : 'text-gray-500 hover:text-cyan-600'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`;
+                editListButton.title = "Listeyi Yeniden Adlandır";
+                editListButton.className = "p-1 rounded hover:bg-gray-300/50 edit-list-btn";
+                editListButton.onclick = (e) => {
+                    e.stopPropagation();
+                    listItemEl.classList.add('editing-list');
+                    listNameSpan.classList.add('hidden');
+                    listEditInput.classList.remove('hidden');
+                    listEditInput.focus();
+                    listEditInput.select();
+                    actionsDiv.classList.add('hidden'); 
+                    listItemEl.querySelector('.save-cancel-list-actions')?.classList.remove('hidden');
+                };
+                actionsDiv.appendChild(editListButton);
+
+                if (list.isDeletable !== false) { 
+                    const deleteListBtn = document.createElement('button');
+                    deleteListBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ${listId === activeListId ? 'text-red-300 hover:text-red-100' : 'text-red-400 hover:text-red-600'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
+                    deleteListBtn.title = "Listeyi Sil";
+                    deleteListBtn.className = "p-1 rounded hover:bg-red-200/50 delete-list-btn";
+                    deleteListBtn.onclick = (e) => { e.stopPropagation(); deleteUserList(listId); };
+                    actionsDiv.appendChild(deleteListBtn);
+                }
+                listItemEl.appendChild(actionsDiv);
+                
+                const saveCancelListActions = document.createElement('div');
+                saveCancelListActions.className = 'save-cancel-list-actions hidden flex items-center space-x-1 ml-2';
+                const saveListNameBtn = document.createElement('button');
+                saveListNameBtn.textContent = '✓';
+                saveListNameBtn.className = `text-xs p-1 rounded ${listId === activeListId ? 'bg-green-200 text-green-800 hover:bg-green-300' : 'bg-green-500 text-white hover:bg-green-600'}`;
+                saveListNameBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    const success = await updateListName(listId, listEditInput.value);
+                    if (success) {
+                         listItemEl.classList.remove('editing-list');
+                         listNameSpan.classList.remove('hidden');
+                         listEditInput.classList.add('hidden');
+                         actionsDiv.classList.remove('hidden');
+                         saveCancelListActions.classList.add('hidden');
+                    } 
+                };
+                const cancelListNameBtn = document.createElement('button');
+                cancelListNameBtn.textContent = '✕';
+                cancelListNameBtn.className = `text-xs p-1 rounded ${listId === activeListId ? 'bg-red-200 text-red-800 hover:bg-red-300' : 'bg-gray-400 text-white hover:bg-gray-500'}`;
+                cancelListNameBtn.onclick = (e) => {
+                     e.stopPropagation();
+                     listEditInput.value = listNameSpan.textContent; 
+                     listItemEl.classList.remove('editing-list');
+                     listNameSpan.classList.remove('hidden');
+                     listEditInput.classList.add('hidden');
+                     actionsDiv.classList.remove('hidden');
+                     saveCancelListActions.classList.add('hidden');
+                };
+                saveCancelListActions.appendChild(saveListNameBtn);
+                saveCancelListActions.appendChild(cancelListNameBtn);
+                listItemEl.appendChild(saveCancelListActions);
+
+                listItemEl.addEventListener('click', () => {
+                    if (listItemEl.classList.contains('editing-list')) return; 
+                    activeListId = listId;
+                    renderAppUI(); 
+                });
+                listsContainerEl.appendChild(listItemEl);
+            });
+        }
+        
+        function renderTaskNode(taskDoc, level, childrenMap, targetElement) {
+            const task = taskDoc.data;
+            const taskId = taskDoc.id;
+            const parentListId = task.listId; 
+
+            const listItem = document.createElement('li');
+            listItem.className = `mb-1 rounded-lg transition-all duration-300 ease-in-out flex flex-col ${task.completed ? 'opacity-60' : ''}`;
+            listItem.style.marginLeft = `${level * 18}px`; 
+            if (level > 0) {
+                 listItem.classList.add('border-l-2', 'border-gray-300', 'pl-1.5', 'pt-0.5');
+            }
+            
+            const taskWrapper = document.createElement('div'); 
+            listItem.appendChild(taskWrapper);
+
+            const topRow = document.createElement('div');
+            topRow.className = `flex items-center justify-between p-1.5 rounded-md ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50 shadow-sm'}`;
+            
+            const leftSection = document.createElement('div');
+            leftSection.className = 'flex items-center flex-grow min-w-0';
+
+            const children = childrenMap.get(taskId) || [];
+            if (children.length > 0) {
+                const collapseButton = document.createElement('button');
+                collapseButton.className = 'mr-1 p-0.5 rounded hover:bg-gray-200 focus:outline-none';
+                taskDoc.isCollapsed = taskDoc.isCollapsed === undefined ? false : taskDoc.isCollapsed; 
+                collapseButton.innerHTML = taskDoc.isCollapsed ? 
+                    `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>` : 
+                    `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`; 
+                
+                collapseButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    taskDoc.isCollapsed = !taskDoc.isCollapsed;
+                    renderAppUI(); 
+                });
+                leftSection.appendChild(collapseButton);
+            } else if (level === 0) { 
+                 const spacer = document.createElement('div');
+                 spacer.className = 'w-[18px] mr-1'; 
+                 leftSection.appendChild(spacer);
+            }
+
+            const orderButtons = document.createElement('div');
+            orderButtons.className = 'flex flex-col mr-1 space-y-px';
+            
+            const parentIdForSiblings = task.parentId || null;
+            let siblings;
+            if (parentIdForSiblings) {
+                siblings = (childrenMap.get(parentIdForSiblings) || []).filter(s => s.data.listId === parentListId).sort((a,b) => a.data.order - b.data.order);
+            } else {
+                siblings = localTasksCache.filter(t => !t.data.parentId && t.data.listId === parentListId).sort((a,b) => a.data.order - b.data.order);
+            }
+            const currentIndexInSiblings = siblings.findIndex(s => s.id === taskId);
+
+            const upButton = document.createElement('button');
+            upButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-gray-400 hover:text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg>`;
+            upButton.className = 'p-px rounded-sm hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed';
+            upButton.disabled = currentIndexInSiblings === 0;
+            upButton.addEventListener('click', (e) => { e.stopPropagation(); moveTask(taskId, 'up'); });
+            orderButtons.appendChild(upButton);
+
+            const downButton = document.createElement('button');
+            downButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-gray-400 hover:text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>`;
+            downButton.className = 'p-px rounded-sm hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed';
+            downButton.disabled = currentIndexInSiblings === siblings.length - 1;
+            downButton.addEventListener('click', (e) => { e.stopPropagation(); moveTask(taskId, 'down'); });
+            orderButtons.appendChild(downButton);
+            leftSection.appendChild(orderButtons);
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = task.completed;
+            checkbox.className = 'mr-1.5 h-4 w-4 sm:mr-2 sm:h-4.5 sm:w-4.5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer flex-shrink-0';
+            checkbox.addEventListener('change', () => toggleTaskCompleted(taskId, task.completed));
+            leftSection.appendChild(checkbox);
+
+            const taskTextElement = document.createElement('span');
+            taskTextElement.textContent = task.text;
+            taskTextElement.className = `task-text text-gray-700 text-sm sm:text-base truncate ${task.completed ? 'line-through text-gray-400' : ''}`;
+            leftSection.appendChild(taskTextElement);
+
+            const editInput = document.createElement('input');
+            editInput.type = 'text';
+            editInput.value = task.text;
+            editInput.className = 'edit-input hidden flex-grow p-0.5 border border-indigo-300 rounded-md focus:ring-1 focus:ring-indigo-500 text-sm sm:text-base';
+            leftSection.appendChild(editInput);
+            topRow.appendChild(leftSection);
+
+            const taskActions = document.createElement('div');
+            taskActions.className = 'task-actions flex items-center space-x-1 sm:space-x-1.5 flex-shrink-0 ml-1';
+
+            if (!task.completed) {
+                if (task.parentId) {
+                    const promoteButton = document.createElement('button');
+                    promoteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-500 hover:text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l4-4m-4 4l4 4" /></svg>`;
+                    promoteButton.className = 'p-0.5 sm:p-1 rounded-md hover:bg-gray-200';
+                    promoteButton.title = "Ana Görev Yap";
+                    promoteButton.addEventListener('click', (e) => { e.stopPropagation(); promoteTaskToMain(taskId); });
+                    taskActions.appendChild(promoteButton);
+                }
+
+                const editButton = document.createElement('button');
+                editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-500 hover:text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`;
+                editButton.className = 'p-0.5 sm:p-1 rounded-md hover:bg-gray-200 edit-action-btn';
+                editButton.addEventListener('click', (e) => { 
+                     e.stopPropagation();
+                    taskWrapper.classList.add('editing'); 
+                    topRow.querySelector('.task-text').classList.add('hidden');
+                    topRow.querySelector('.edit-input').classList.remove('hidden');
+                    topRow.querySelector('.edit-input').focus(); topRow.querySelector('.edit-input').select();
+                    taskActions.querySelectorAll('.gemini-action, .delete-action, .edit-action-btn, button[title*="Taşı"], button[title="Ana Görev Yap"]').forEach(btn => btn.classList.add('hidden'));
+                    taskWrapper.querySelector('.save-cancel-actions').classList.remove('hidden');
+                });
+                taskActions.appendChild(editButton);
+
+                const elaborateButton = document.createElement('button');
+                elaborateButton.innerHTML = `✨`; 
+                elaborateButton.className = 'gemini-action bg-blue-400 hover:bg-blue-500 text-white font-medium py-0.5 px-1 rounded-md shadow-sm text-xs';
+                elaborateButton.title = "Görevi Detaylandır";
+                elaborateButton.addEventListener('click', (e) => { e.stopPropagation(); elaborateTask(taskId, task.text, elaborateButton, parentListId); });
+                taskActions.appendChild(elaborateButton);
+
+                const breakDownButton = document.createElement('button');
+                breakDownButton.innerHTML = `↪️`; 
+                breakDownButton.className = 'gemini-action bg-yellow-400 hover:bg-yellow-500 text-yellow-800 font-medium py-0.5 px-1 rounded-md shadow-sm text-xs';
+                breakDownButton.title = "Görevi Parçala";
+                breakDownButton.addEventListener('click', (e) => { e.stopPropagation(); breakDownTaskIntoSubtasks(taskId, task.text, breakDownButton, parentListId); });
+                taskActions.appendChild(breakDownButton);
+            }
+
+            const deleteButton = document.createElement('button');
+            deleteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-400 hover:text-red-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>`;
+            deleteButton.className = 'delete-action p-0.5 sm:p-1 rounded-full hover:bg-red-100';
+            deleteButton.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(taskId); });
+            taskActions.appendChild(deleteButton);
+            topRow.appendChild(taskActions);
+
+            const saveCancelActions = document.createElement('div');
+            saveCancelActions.className = 'save-cancel-actions hidden flex items-center space-x-1.5 mt-1 self-end mr-1';
+            const saveButton = document.createElement('button');
+            saveButton.textContent = 'Kaydet';
+            saveButton.className = 'bg-green-500 hover:bg-green-600 text-white py-0.5 px-2 rounded text-xs';
+            saveButton.addEventListener('click', async (e) => { 
+                e.stopPropagation();
+                const newText = topRow.querySelector('.edit-input').value;
+                await updateTaskText(taskId, newText);
+                topRow.querySelector('.task-text').textContent = newText;
+                taskWrapper.classList.remove('editing'); 
+                topRow.querySelector('.task-text').classList.remove('hidden');
+                topRow.querySelector('.edit-input').classList.add('hidden');
+                taskActions.querySelectorAll('.gemini-action, .delete-action, .edit-action-btn, button[title*="Taşı"], button[title="Ana Görev Yap"]').forEach(btn => btn.classList.remove('hidden'));
+                if(task.completed) {
+                    taskActions.querySelector('.edit-action-btn')?.classList.add('hidden');
+                    taskActions.querySelector('.gemini-action[title*="Detay"]')?.classList.add('hidden');
+                    taskActions.querySelector('.gemini-action[title*="Parçala"]')?.classList.add('hidden');
+                    taskActions.querySelector('button[title="Ana Görev Yap"]')?.classList.add('hidden');
+                }
+                taskWrapper.querySelector('.save-cancel-actions').classList.add('hidden');
+            });
+            const cancelButton = document.createElement('button');
+            cancelButton.textContent = 'İptal';
+            cancelButton.className = 'bg-gray-300 hover:bg-gray-400 text-gray-700 py-0.5 px-2 rounded text-xs';
+            cancelButton.addEventListener('click', (e) => { 
+                e.stopPropagation();
+                topRow.querySelector('.edit-input').value = topRow.querySelector('.task-text').textContent;
+                taskWrapper.classList.remove('editing'); 
+                topRow.querySelector('.task-text').classList.remove('hidden');
+                topRow.querySelector('.edit-input').classList.add('hidden');
+                taskActions.querySelectorAll('.gemini-action, .delete-action, .edit-action-btn, button[title*="Taşı"], button[title="Ana Görev Yap"]').forEach(btn => btn.classList.remove('hidden'));
+                 if(task.completed) {
+                    taskActions.querySelector('.edit-action-btn')?.classList.add('hidden');
+                    taskActions.querySelector('.gemini-action[title*="Detay"]')?.classList.add('hidden');
+                    taskActions.querySelector('.gemini-action[title*="Parçala"]')?.classList.add('hidden');
+                    taskActions.querySelector('button[title="Ana Görev Yap"]')?.classList.add('hidden');
+                 }
+                taskWrapper.querySelector('.save-cancel-actions').classList.add('hidden');
+            });
+            saveCancelActions.appendChild(saveButton);
+            saveCancelActions.appendChild(cancelButton);
+            
+            taskWrapper.appendChild(topRow);
+            taskWrapper.appendChild(saveCancelActions);
+            
+            targetElement.appendChild(listItem);
+
+            if (!taskDoc.isCollapsed && children.length > 0) {
+                const subTaskList = document.createElement('ul');
+                subTaskList.className = 'subtask-list'; 
+                listItem.appendChild(subTaskList); 
+                children.sort((a,b)=> a.data.order - b.data.order);
+                children.forEach((childDoc) => { 
+                    renderTaskNode(childDoc, level + 1, childrenMap, subTaskList);
+                });
+            }
+        }
+        
+        function renderAppUI() {
+            if (!userId) { 
+                if (authContainer) authContainer.classList.remove('hidden');
+                if (appMainContainer) appMainContainer.classList.add('hidden');
+                return;
+            }
+
+            if (authContainer) authContainer.classList.add('hidden');
+            if (appMainContainer) appMainContainer.classList.remove('hidden');
+            
+            renderListsUI(); 
+            
+            if (!activeListId && localListsCache.length > 0) {
+                 const sortedLists = [...localListsCache].sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
+                 activeListId = sortedLists[0].id; 
+                if (listSelectorForNewTask && listSelectorForNewTask.options.length > 0) {
+                     listSelectorForNewTask.value = activeListId;
+                }
+            } else if (localListsCache.length === 0) {
+                if(globalNoListsMessage) globalNoListsMessage.classList.remove('hidden');
+                if(tasksPanel) tasksPanel.classList.add('hidden'); 
+                if(activeListNameHeader) activeListNameHeader.textContent = "Liste Yok";
+                if(activeTaskList) activeTaskList.innerHTML = '';
+                if (listSelectorForNewTask) listSelectorForNewTask.innerHTML = '<option value="">Liste Yok</option>';
+                if(taskInput) taskInput.disabled = true;
+                if(addTaskButton) addTaskButton.disabled = true;
+
+                return;
+            }
+             if(tasksPanel) tasksPanel.classList.remove('hidden'); 
+
+            const activeList = localListsCache.find(l => l.id === activeListId);
+            if (activeListNameHeader) {
+                activeListNameHeader.textContent = activeList ? activeList.data.name : "Bir Liste Seçin";
+                activeListNameHeader.className = `text-2xl font-semibold mb-3 pb-1 border-b-2 ${activeListId === defaultListTodayId ? 'text-emerald-700 border-emerald-500' : (activeListId === defaultListLaterId ? 'text-sky-700 border-sky-500' : 'text-gray-700 border-gray-400')}`;
+            }
+            
+            if(activeTaskList) activeTaskList.innerHTML = '';
+            if(noTasksInListMessage) noTasksInListMessage.classList.add('hidden');
+
+            if (!activeListId) {
+                if(noTasksInListMessage) {
+                     noTasksInListMessage.textContent = "Lütfen çalışmak için bir liste seçin.";
+                     noTasksInListMessage.classList.remove('hidden');
+                }
+                return;
+            }
+
+            const childrenMap = new Map();
+            const topLevelTasksInActiveList = [];
+
+            const allTasks = localTasksCache.filter(item => item.data && item.data.hasOwnProperty('listId')); 
+
+
+            allTasks.forEach(taskDoc => { 
+                if (taskDoc.data.listId === activeListId) { 
+                    const parentId = taskDoc.data.parentId;
+                    if (parentId) {
+                        if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
+                        childrenMap.get(parentId).push(taskDoc);
+                    } else {
+                        topLevelTasksInActiveList.push(taskDoc);
+                    }
+                }
+            });
+            
+            topLevelTasksInActiveList.sort((a,b) => (a.data.order || 0) - (b.data.order || 0));
+
+            if (topLevelTasksInActiveList.length === 0 && childrenMap.size === 0 && userId) { 
+                if(noTasksInListMessage) {
+                     noTasksInListMessage.textContent = `Bu listede (${activeList?.data.name || ''}) henüz görev yok.`;
+                     noTasksInListMessage.classList.remove('hidden');
+                }
+            } else if (userId) { 
+                topLevelTasksInActiveList.forEach((taskDoc) => renderTaskNode(taskDoc, 0, childrenMap, activeTaskList));
+            }
+        }
+
+
+        // --- Firebase Dinleyicileri ---
+        function listenToUserSpecificData() {
+            if (!userId || !db) return;
+            
+            if(loadingIndicator) loadingIndicator.classList.remove('hidden');
+
+            if (unsubscribeLists) unsubscribeLists();
+            listsCollectionRef = collection(db, "artifacts", appId, "users", userId, "lists");
+            const qLists = query(listsCollectionRef, orderBy("order", "asc"));
+            unsubscribeLists = onSnapshot(qLists, async (querySnapshot) => {
+                const newLists = [];
+                querySnapshot.forEach((doc) => {
+                    newLists.push({ id: doc.id, data: doc.data() });
+                });
+                localListsCache = newLists; 
+                console.log("Lists updated from Firestore:", localListsCache.length);
+                await ensureDefaultListsExist(); 
+                renderAppUI(); 
+                if(loadingIndicator) loadingIndicator.classList.add('hidden');
+            }, (error) => {
+                console.error("Listeleri dinlerken hata:", error);
+                showAppErrorModal("Listeler alınırken bir sorun oluştu.");
+                if(loadingIndicator) loadingIndicator.classList.add('hidden');
+            });
+
+            if (unsubscribeTodos) unsubscribeTodos();
+            todosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
+            const qTodos = query(todosCollectionRef, orderBy("createdAt", "desc")); 
+            unsubscribeTodos = onSnapshot(qTodos, (querySnapshot) => {
+                const newTasks = [];
+                querySnapshot.forEach((doc) => { 
+                    const existingTaskData = localTasksCache.find(lt => lt.id === doc.id && lt.data.hasOwnProperty('listId'));
+                    newTasks.push({ 
+                        id: doc.id, 
+                        data: doc.data(),
+                        isCollapsed: existingTaskData ? existingTaskData.isCollapsed : false 
+                    }); 
+                });
+                localTasksCache = newTasks; 
+                renderAppUI(); 
+                if(loadingIndicator) loadingIndicator.classList.add('hidden');
+            }, (error) => {
+                console.error("Firestore todos listen error:", error); 
+                showAppErrorModal(`Görevler alınırken hata: ${error.message}.`);
+                if(loadingIndicator) loadingIndicator.classList.add('hidden');
+            });
+        }
+
+
+        // --- Kimlik Durumu Değişikliği ---
+        if(authInstance) { 
+            onAuthStateChanged(authInstance, async (user) => { 
+                clearAuthError(); 
+                if (user) { 
+                    userId = user.uid;
+                    if (user.isAnonymous) {
+                        if(authStatusDisplay) authStatusDisplay.textContent = 'Anonim Kullanıcı';
+                        if(userIdDisplayElement) userIdDisplayElement.textContent = `Geçici ID: ${userId.substring(0,10)}...`;
+                    } else {
+                        if(authStatusDisplay) authStatusDisplay.textContent = `Giriş Yapıldı: ${user.email}`;
+                        if(userIdDisplayElement) userIdDisplayElement.textContent = `Kullanıcı ID: ${userId.substring(0,10)}...`;
+                    }
+                    if(authStatusDisplay) authStatusDisplay.classList.remove('hidden');
+                    if(userIdDisplayElement) userIdDisplayElement.classList.remove('hidden');
+                    if(logoutButton) logoutButton.classList.remove('hidden');
+                    
+                    if(authContainer) authContainer.classList.add('hidden');
+                    if(appMainContainer) appMainContainer.classList.remove('hidden'); 
+                    
+                    if (db) {
+                        listenToUserSpecificData();
+                    } else {
+                         console.error("DB (Firestore) is not initialized!");
+                         showAppErrorModal("Veritabanı bağlantısı kurulamadı.");
+                    }
+                } else { 
+                    userId = null;
+                    activeListId = null; 
+                    defaultListTodayId = null;
+                    defaultListLaterId = null;
+                    localListsCache = []; 
+                    localTasksCache = []; 
+
+                    if(authStatusDisplay) authStatusDisplay.textContent = 'Oturum Kapalı';
+                    if(authStatusDisplay) authStatusDisplay.classList.add('hidden'); 
+                    if(userIdDisplayElement) userIdDisplayElement.classList.add('hidden');
+                    if(logoutButton) logoutButton.classList.add('hidden');
+
+                    if (unsubscribeTodos) unsubscribeTodos();
+                    if (unsubscribeLists) unsubscribeLists();
+                    
+                    renderAppUI(); 
+                    
+                    if(authContainer) authContainer.classList.remove('hidden');
+                    if(appMainContainer) appMainContainer.classList.add('hidden'); 
+                    
+                    if(loginForm) loginForm.reset(); 
+                    if(signupForm) signupForm.reset();
+
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        console.log("Özel token ile giriş deneniyor (onAuthStateChanged)...");
+                        try {
+                            if(authInstance) await signInWithCustomToken(authInstance, __initial_auth_token);
+                        } catch (error) {
+                            console.error("Özel token ile giriş hatası (onAuthStateChanged):", error);
+                        }
+                    } else {
+                        console.log("Kullanıcı oturumu yok, giriş bekleniyor.");
+                    }
+                }
+                if(loadingIndicator) loadingIndicator.classList.add('hidden'); 
+            });
+        } else {
+            console.error("Firebase Auth başlatılamadı, onAuthStateChanged ayarlanamadı.");
+            if(authContainer) authContainer.classList.remove('hidden'); 
+            if(appMainContainer) appMainContainer.classList.add('hidden'); 
+            if(loadingIndicator) loadingIndicator.classList.add('hidden'); 
+        }
+        
+        // --- Olay Dinleyicileri ---
+        if(switchToSignup) switchToSignup.addEventListener('click', (e) => { e.preventDefault(); if(loginForm) loginForm.classList.add('hidden'); if(signupForm) signupForm.classList.remove('hidden'); clearAuthError(); });
+        if(switchToLogin) switchToLogin.addEventListener('click', (e) => { e.preventDefault(); if(signupForm) signupForm.classList.add('hidden'); if(loginForm) loginForm.classList.remove('hidden'); clearAuthError(); });
+        
+        if(loginForm) loginForm.addEventListener('submit', handleLogin);
+        if(signupForm) signupForm.addEventListener('submit', handleSignup);
+        
+        if(logoutButton) logoutButton.addEventListener('click', handleLogout);
+        if(googleLoginButton) googleLoginButton.addEventListener('click', handleGoogleLogin); // Google giriş butonu için olay dinleyici
+        
+        if(addListButton) {
+            addListButton.addEventListener('click', function(event) { 
+                console.log('Add List Button - click listener fired.');
+                event.preventDefault(); 
+                handleAddNewList(); 
+            });
+        }
+        
+        if(newListInput) {
+            newListInput.addEventListener('keypress', (e) => { 
+                if (e.key === 'Enter') {
+                    if (document.activeElement === newListInput) { 
+                         console.log('New List Input - Enter keypress listener fired.'); 
+                         e.preventDefault(); 
+                         handleAddNewList();
+                    }
+                }
+            });
+        }
+        
+        if(addTaskButton) {
+            addTaskButton.addEventListener('click', addTaskFromInput);
+        }
+        if(taskInput) {
+            taskInput.addEventListener('keypress', (event) => { 
+                if (event.key === 'Enter') {
+                    if (document.activeElement === taskInput) { 
+                        addTaskFromInput();
+                    }
+                }
+            });
+        }
+
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f9fafb; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .animate-spin-slow { animation: spin 1.5s linear infinite; }
+         .list-item.editing-list .list-name-span, 
+        .list-item.editing-list .edit-list-btn,
+        .list-item.editing-list .delete-list-btn {
+            display: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-2 sm:p-4 bg-gradient-to-tr from-slate-300 via-gray-300 to-stone-400">
+
+    <div id="appMainContainer" class="bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl p-4 md:p-6 lg:p-8 w-full max-w-3xl lg:max-w-4xl flex flex-col md:flex-row gap-6 hidden">
+        <!-- Sol Panel: Listeler ve Auth (Auth içinde olacak) -->
+        <aside id="listsPanel" class="w-full md:w-1/3 lg:w-1/4 md:border-r md:pr-6 space-y-6 flex flex-col">
+            <header class="text-center md:text-left">
+                <h1 class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-700 via-gray-600 to-stone-700">
+                    Yapılacaklar Listesi
+                </h1>
+                <div id="authStatusContainer" class="mt-1 text-xs text-gray-600">
+                    <span id="authStatus" class="hidden">Oturum durumu...</span>
+                    <span id="userIdDisplay" class="ml-1 text-gray-500 hidden tracking-tight"></span>
+                    <button id="logoutButton" class="ml-2 hidden text-red-500 hover:text-red-700 font-semibold text-xs underline">Çıkış Yap</button>
+                </div>
+            </header>
+            
+            <!-- Listeler Bölümü -->
+            <div class="flex-grow">
+                <h3 class="text-md font-semibold text-gray-500 mb-2">LİSTELERİM</h3>
+                <div id="listsContainer" class="space-y-1 max-h-48 md:max-h-64 overflow-y-auto mb-3 pr-1">
+                    <!-- Listeler buraya render edilecek -->
+                </div>
+                <p id="globalNoListsMessage" class="text-gray-400 text-sm text-center py-3 hidden">Liste oluşturarak başlayın.</p>
+                <div class="flex space-x-2 mt-2">
+                    <input type="text" id="newListInput" placeholder="Yeni liste adı..." class="flex-grow px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500">
+                    <button id="addListButton" class="bg-slate-500 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-md whitespace-nowrap flex-shrink-0">Liste Ekle</button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Sağ Panel: Aktif Liste ve Görevler -->
+        <main id="tasksPanel" class="w-full md:w-2/3 lg:w-3/4"> 
+             <div id="taskInputArea" class="mb-4 flex items-stretch space-x-2">
+                <input type="text" id="taskInput" placeholder="Yeni görev ekle..." class="flex-grow p-3 border border-gray-300 rounded-xl shadow-inner focus:ring-3 focus:ring-cyan-400 focus:border-cyan-400 text-sm">
+                <select id="listSelectorForNewTask" class="p-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm bg-white appearance-none">
+                    <!-- Listeler buraya dinamik olarak eklenecek -->
+                </select>
+                <button id="addTaskButton" class="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold py-3 px-4 rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
+                    Ekle
+                </button>
+            </div>
+
+            <div id="loadingIndicator" class="hidden flex justify-center items-center my-5">
+                <div class="animate-spin-slow rounded-full h-10 w-10 border-t-4 border-b-4 border-cyan-500"></div>
+                <p class="ml-3 text-gray-700">Yükleniyor...</p>
+            </div>
+            
+            <div id="mainContentArea" class="space-y-4 max-h-[65vh] overflow-y-auto p-1">
+                <section id="activeListContent">
+                    <h2 id="activeListNameHeader" class="text-2xl font-semibold mb-3 pb-1 border-b-2">
+                        Liste Yükleniyor...
+                    </h2>
+                    <ul id="activeTaskList" class="space-y-1">
+                        <!-- Aktif liste görevleri buraya eklenecek -->
+                    </ul>
+                    <p id="noTasksInListMessage" class="text-gray-500 text-center py-4 hidden"></p>
+                </section>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Auth Container (Uygulama dışında, başlangıçta bu görünecek) -->
+    <div id="authContainer" class="bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl p-4 md:p-6 lg:p-8 w-full max-w-md mx-auto">
+        <header class="mb-6 text-center">
+             <h1 class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-700 via-gray-600 to-stone-700">
+                Yapılacaklar Listesi
+            </h1>
+        </header>
+        <div id="authErrorMessages" class="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm hidden"></div>
+        <form id="loginForm" class="space-y-3">
+            <h2 class="text-lg font-semibold text-gray-700">Giriş Yap</h2>
+            <div>
+                <label for="loginEmail" class="sr-only">E-posta</label>
+                <input type="email" id="loginEmail" placeholder="E-posta" required class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
+            </div>
+            <div>
+                <label for="loginPassword" class="sr-only">Şifre</label>
+                <input type="password" id="loginPassword" placeholder="Şifre" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
+            </div>
+            <button id="loginButton" type="submit" class="w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700">Giriş Yap</button>
+            <!-- Google ile Giriş Butonu -->
+            <button type="button" id="googleLoginButton" class="mt-2 w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                 <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.223,0-9.657-3.356-11.303-8H6.306C9.656,39.663,16.318,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l0.001-0.001l6.19,5.238C39.903,38.635,44,31.886,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
+                Google ile Giriş Yap
+            </button>
+            <p class="text-xs text-center">
+                Hesabınız yok mu? <a href="#" id="switchToSignup" class="font-medium text-cyan-600 hover:text-cyan-500">Kaydolun</a>
+            </p>
+        </form>
+        <form id="signupForm" class="space-y-3 hidden">
+            <h2 class="text-lg font-semibold text-gray-700">Kaydol</h2>
+            <div>
+                <label for="signupEmail" class="sr-only">E-posta</label>
+                <input type="email" id="signupEmail" placeholder="E-posta" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
+            </div>
+            <div>
+                <label for="signupPassword" class="sr-only">Şifre</label>
+                <input type="password" id="signupPassword" placeholder="Şifre (en az 6 karakter)" required minlength="6" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
+            </div>
+            <button id="signupButton" type="submit" class="w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700">Kaydol</button>
+            <p class="text-xs text-center">
+                Zaten hesabınız var mı? <a href="#" id="switchToLogin" class="font-medium text-cyan-600 hover:text-cyan-500">Giriş yapın</a>
+            </p>
+        </form>
+    </div>
+
+
+    <!-- Hata Modalı (App için) -->
+    <div id="errorModal" class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+        <div class="relative mx-auto p-5 border-2 border-red-300 w-full max-w-md shadow-2xl rounded-xl bg-white">
+            <div class="mt-2 text-center">
+                <div class="mx-auto flex items-center justify-center h-12 w-12 sm:h-14 sm:w-14 rounded-full bg-red-100 mb-3">
+                    <svg class="h-8 w-8 sm:h-9 sm:w-9 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                </div>
+                <h3 class="text-xl sm:text-2xl leading-6 font-bold text-gray-900">Hata Oluştu!</h3>
+                <div class="mt-3 px-5 py-2"><p id="errorMessage" class="text-sm sm:text-base text-gray-700"></p></div>
+                <div class="items-center px-4 py-3 mt-1">
+                    <button id="closeErrorModalButton" class="px-5 py-2.5 bg-red-600 text-white text-base sm:text-lg font-semibold rounded-lg w-full shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-400 transition-colors">Kapat</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gemini Yükleme Modalı -->
+    <div id="geminiLoadingModal" class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+        <div class="relative mx-auto p-6 w-full max-w-xs sm:max-w-sm shadow-xl rounded-lg bg-white text-center">
+            <div class="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-t-4 border-b-4 border-purple-500 mx-auto mb-3"></div>
+            <p id="geminiLoadingModalTitle" class="text-base sm:text-lg font-medium text-gray-700">✨ Gemini düşünüyor...</p>
+            <p id="geminiLoadingModalDescription" class="text-xs sm:text-sm text-gray-500 mt-1">İşleniyor...</p>
+        </div>
+    </div>
+
+    <footer class="mt-8 text-center">
+        <p class="text-xs sm:text-sm text-white opacity-80">Yapılacaklar Listesi &copy; 2024</p>
+    </footer>
+
+</body>
+</html>
