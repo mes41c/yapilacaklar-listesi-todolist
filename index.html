@@ -39,24 +39,22 @@
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
-          apiKey: "AIzaSyCCML1QJZWGQbIHFtr7iohPzT11E5RBONo",
+          apiKey: "AIzaSyCCML1QJZWGQbIHFtr7iohPzT11E5RBONo", 
           authDomain: "yapilacaklarlistesi-aa004.firebaseapp.com",
           projectId: "yapilacaklarlistesi-aa004",
-          storageBucket: "yapilacaklarlistesi-aa004.firebasestorage.app",
+          storageBucket: "yapilacaklarlistesi-aa004.appspot.com", 
           messagingSenderId: "582402705694",
           appId: "1:582402705694:web:3eb74e683ada3e8d56e10f"
         };
 
-        // Uygulama Kimliği (Geliştirme Ortamı için Varsayılan)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'todo-app-rebuild-final-v3'; // Benzersiz bir ID kullanın
+        // Uygulama Kimliği
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'todo-app-rebuild-final-v2';
 
-        // Firebase uygulamasını başlat
         const app = initializeApp(firebaseConfig);
         console.log("Firebase App Initialized:", app.name); 
 
         let db, authInstance; 
 
-        // Firestore ve Auth servislerini başlatma
         try {
             db = getFirestore(app);
             console.log("Firestore DB Initialized"); 
@@ -73,19 +71,18 @@
             showAppErrorModal("Kimlik doğrulama servisi başlatılamadı.");
         }
         
-        // Global değişkenler
         let userId = null;
         let todosCollectionRef = null;
         let listsCollectionRef = null;
         let unsubscribeTodos = null;
         let unsubscribeLists = null;
         
-        let localTasksCache = []; // Görevler için yerel önbellek
-        let localListsCache = []; // Listeler için yerel önbellek
-        let activeListId = null;  // Aktif olarak görüntülenen liste ID'si
-        let defaultListTodayId = null; // "Bugün Yapılacaklar" listesinin ID'si
-        let defaultListLaterId = null; // "Daha Sonra Yapılacaklar" listesinin ID'si
-        let userProvidedGeminiApiKey = null; // Kullanıcının girdiği Gemini API anahtarı
+        let localTasksCache = []; 
+        let localListsCache = [];
+        let activeListId = null;
+        let defaultListTodayId = null;
+        let defaultListLaterId = null;
+        let userProvidedGeminiApiKey = null; 
 
         // --- UI Elementleri ---
         const authContainer = document.getElementById('authContainer');
@@ -131,25 +128,19 @@
         const saveGeminiApiKeyButton = document.getElementById('saveGeminiApiKeyButton');
         const closeGeminiApiKeyModalButton = document.getElementById('closeGeminiApiKeyModalButton');
         const manageApiKeyButton = document.getElementById('manageApiKeyButton'); 
-        const hamburgerButton = document.getElementById('hamburgerButton'); // Mobil menü butonu
-        const sidebarOverlay = document.getElementById('sidebarOverlay'); // Mobil menü arkaplanı
 
-        // Genel uygulama hata modalını gösterme fonksiyonu
         function showAppErrorModal(message) {
             if(errorMessage) errorMessage.textContent = message;
             if(errorModal) errorModal.classList.remove('hidden');
         }
-        // Hata modalını kapatma olayı
         if(closeErrorModalButton) closeErrorModalButton.addEventListener('click', () => errorModal.classList.add('hidden'));
 
-        // Kimlik doğrulama hatalarını gösterme fonksiyonu
         function showAuthError(message) {
             if(authErrorMessages) {
                 authErrorMessages.textContent = message;
                 authErrorMessages.classList.remove('hidden');
             }
         }
-        // Kimlik doğrulama hatalarını temizleme fonksiyonu
         function clearAuthError() {
             if(authErrorMessages) {
                 authErrorMessages.textContent = '';
@@ -158,7 +149,6 @@
         }
         
         // --- Gemini API Anahtarı Yönetimi ---
-        // Kullanıcının Firestore'a kaydedilmiş Gemini API anahtarını yükler
         async function loadUserGeminiApiKey() {
             if (!userId || !db) return null;
             const apiKeyDocRef = doc(db, "artifacts", appId, "users", userId, "settings", "apiKeys");
@@ -173,7 +163,7 @@
                     }
                 }
                 console.log("Kullanıcı için kayıtlı Gemini API anahtarı bulunamadı veya boş.");
-                userProvidedGeminiApiKey = null; 
+                userProvidedGeminiApiKey = null; // Anahtar yoksa veya boşsa null yap
                 return null;
             } catch (error) {
                 console.error("Gemini API anahtarı okunurken hata:", error);
@@ -183,22 +173,20 @@
             }
         }
 
-        // Kullanıcının girdiği Gemini API anahtarını Firestore'a kaydeder
         async function saveUserGeminiApiKey() {
             if (!userId || !db || !geminiApiKeyInput) return;
             const apiKeyToSave = geminiApiKeyInput.value.trim();
             if (!apiKeyToSave) {
                 showAppErrorModal("API anahtarı boş olamaz.");
+                // geminiApiKeyInput'a focus yap ve belki bir border rengi ile uyar.
                 geminiApiKeyInput.focus();
                 geminiApiKeyInput.classList.add('border-red-500');
                 return;
             }
-            geminiApiKeyInput.classList.remove('border-red-500');
+            geminiApiKeyInput.classList.remove('border-red-500'); // Başarılıysa veya doluysa border'ı kaldır
             
-            if (saveGeminiApiKeyButton) {
-                saveGeminiApiKeyButton.disabled = true;
-                saveGeminiApiKeyButton.textContent = "Kaydediliyor...";
-            }
+            saveGeminiApiKeyButton.disabled = true;
+            saveGeminiApiKeyButton.textContent = "Kaydediliyor...";
 
             const apiKeyDocRef = doc(db, "artifacts", appId, "users", userId, "settings", "apiKeys");
             try {
@@ -210,35 +198,32 @@
                 console.error("Gemini API anahtarı kaydedilirken hata:", error);
                 showAppErrorModal("API anahtarı kaydedilirken bir sorun oluştu.");
             } finally {
-                if (saveGeminiApiKeyButton) {
-                    saveGeminiApiKeyButton.disabled = false;
-                    saveGeminiApiKeyButton.textContent = "Kaydet";
-                }
+                saveGeminiApiKeyButton.disabled = false;
+                saveGeminiApiKeyButton.textContent = "Kaydet";
             }
         }
 
-        // Gemini API anahtarını kontrol eder, yoksa kullanıcıdan ister
         async function checkAndPromptForGeminiApiKey() {
             if (userProvidedGeminiApiKey) {
                 console.log("Gemini API anahtarı zaten mevcut (global).");
                 if(geminiApiKeyModal) geminiApiKeyModal.classList.add('hidden');
                 return true;
             }
-            const storedKey = await loadUserGeminiApiKey();
+            const storedKey = await loadUserGeminiApiKey(); // Firestore'dan yükle
             if (storedKey) {
+                // userProvidedGeminiApiKey zaten loadUserGeminiApiKey içinde set ediliyor.
                 if(geminiApiKeyModal) geminiApiKeyModal.classList.add('hidden');
                 return true;
             } else {
                 console.log("Gemini API anahtarı isteniyor...");
                 if(geminiApiKeyModal) {
-                    if(geminiApiKeyInput) geminiApiKeyInput.value = ''; 
+                    geminiApiKeyInput.value = ''; // Input'u temizle
                     geminiApiKeyModal.classList.remove('hidden');
                 }
                 return false;
             }
         }
 
-        // Gemini API'sine istek gönderir
         async function callGeminiAPI(prompt, loadingTitle = "✨ Gemini düşünüyor...", loadingDescription = "İşleniyor...") {
             if (!userProvidedGeminiApiKey) {
                 const hasKey = await checkAndPromptForGeminiApiKey();
@@ -246,6 +231,8 @@
                     showAppErrorModal("Gemini özelliklerini kullanmak için API anahtarınızı girmeniz gerekiyor. Sol panelden 'Gemini API Anahtarını Yönet' butonuna tıklayarak anahtarınızı ekleyebilirsiniz.");
                     return null; 
                 }
+                 // checkAndPromptForGeminiApiKey içindeki loadUserGeminiApiKey, userProvidedGeminiApiKey'yi güncellemeli.
+                 // Eğer kullanıcı modalı kapatırsa anahtar hala null olabilir.
                  if (!userProvidedGeminiApiKey) {
                      console.warn("Gemini API anahtarı girilmedi veya modal kapatıldı.");
                      return null;
@@ -254,7 +241,7 @@
             
             const apiKey = userProvidedGeminiApiKey; 
 
-            if (!apiKey || apiKey.trim() === "") {
+            if (!apiKey || apiKey.trim() === "") { // Bu kontrol ek güvenlik için, ama checkAndPrompt halletmeli.
                  showAppErrorModal("Geçerli bir Gemini API anahtarı bulunamadı. Lütfen ayarlarınızı kontrol edin.");
                  console.error("callGeminiAPI: apiKey boş veya tanımsız.");
                  return null;
@@ -305,8 +292,8 @@
             }
         }
         
-        // --- Kimlik Doğrulama Fonksiyonları ---
-        // Kullanıcı kaydı
+        // --- Diğer Tüm Fonksiyonlar (handleSignup, handleLogin, vb.) ---
+        // ... (KODUN GERİ KALANI ÖNCEKİ YANITTAKİ GİBİ) ...
         async function handleSignup(e) {
             e.preventDefault();
             if (!authInstance) { showAuthError("Kimlik doğrulama servisi hazır değil."); return; } 
@@ -321,10 +308,8 @@
                 showAuthError("Şifre en az 6 karakter olmalıdır.");
                 return;
             }
-            if (signupButton) {
-                signupButton.disabled = true;
-                signupButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>Kaydolunuyor...`;
-            }
+            signupButton.disabled = true;
+            signupButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>Kaydolunuyor...`;
             try {
                 await createUserWithEmailAndPassword(authInstance, email, password);
             } catch (error) {
@@ -337,14 +322,11 @@
                     showAuthError(`Kayıt hatası: ${error.message}`);
                 }
             } finally {
-                if (signupButton) {
-                    signupButton.disabled = false;
-                    signupButton.textContent = "Kaydol";
-                }
+                signupButton.disabled = false;
+                signupButton.textContent = "Kaydol";
             }
         }
 
-        // Kullanıcı girişi
         async function handleLogin(e) {
             e.preventDefault();
             if (!authInstance) { showAuthError("Kimlik doğrulama servisi hazır değil."); return; } 
@@ -355,10 +337,8 @@
                 showAuthError("E-posta ve şifre boş bırakılamaz.");
                 return;
             }
-            if (loginButton) {
-                loginButton.disabled = true;
-                loginButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>Giriş Yapılıyor...`;
-            }
+            loginButton.disabled = true;
+            loginButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>Giriş Yapılıyor...`;
             try {
                 await signInWithEmailAndPassword(authInstance, email, password);
             } catch (error) {
@@ -369,14 +349,10 @@
                     showAuthError(`Giriş hatası: ${error.message}`);
                 }
             } finally {
-                if (loginButton) {
-                    loginButton.disabled = false;
-                    loginButton.textContent = "Giriş Yap";
-                }
+                loginButton.disabled = false;
+                loginButton.textContent = "Giriş Yap";
             }
         }
-
-        // Google ile giriş
          async function handleGoogleLogin() {
             if (!authInstance) {
                 showAuthError("Kimlik doğrulama servisi hazır değil.");
@@ -413,27 +389,25 @@
             }
         }
 
-        // Kullanıcı çıkışı
+
         async function handleLogout() {
             if (!authInstance) { showAppErrorModal("Kimlik doğrulama servisi hazır değil."); return; } 
-            if (logoutButton) logoutButton.disabled = true;
+            logoutButton.disabled = true;
             try {
                 await firebaseSignOut(authInstance);
             } catch (error) {
                 console.error("Logout error:", error);
                 showAppErrorModal(`Çıkış yaparken hata: ${error.message}`);
             } finally {
-                if (logoutButton) logoutButton.disabled = false;
+                logoutButton.disabled = false;
             }
         }
         
-        // --- Liste Yönetimi Fonksiyonları ---
-        // Kullanıcı için varsayılan listelerin (Bugün, Daha Sonra) varlığını kontrol eder, yoksa oluşturur
         async function ensureDefaultListsExist() {
             if (!userId || !db) return;
             const userListsCollectionRef = collection(db, "artifacts", appId, "users", userId, "lists");
             
-            const q = query(userListsCollectionRef, limit(1)); // Herhangi bir liste var mı diye kontrol et
+            const q = query(userListsCollectionRef, limit(1));
             const snapshot = await getDocs(q);
 
             if (snapshot.empty) {
@@ -448,21 +422,20 @@
                     defaultListLaterId = laterRef.id;
                     
                     console.log("Varsayılan listeler oluşturuldu:", defaultListTodayId, defaultListLaterId);
-                    if (!activeListId) activeListId = defaultListTodayId; // Aktif liste yoksa ilk varsayılanı ata
+                    if (!activeListId) activeListId = defaultListTodayId; 
                 } catch (error) {
                     console.error("Varsayılan listeler oluşturulurken hata:", error);
                     showAppErrorModal("Varsayılan listeler oluşturulamadı.");
                 }
             } else {
                  console.log("Mevcut listeler bulundu.");
-                 if (!activeListId && localListsCache.length > 0) { // Aktif liste yoksa ve önbellekte liste varsa ilkini ata
+                 if (!activeListId && localListsCache.length > 0) {
                     const sortedListsForActive = [...localListsCache].sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
                     activeListId = sortedListsForActive[0].id;
                  }
             }
         }
 
-        // Yeni bir liste ekler
         async function handleAddNewList() {
             console.log("handleAddNewList: function entered."); 
             if (!userId || !db) {
@@ -506,16 +479,15 @@
                      listsCollectionRef = collection(db, "artifacts", appId, "users", userId, "lists");
                      console.log("handleAddNewList: listsCollectionRef re-initialized.");
                 }
-                // Yeni liste için sıralama değeri belirle
                 const newOrder = localListsCache.length > 0 ? Math.max(...localListsCache.map(l => l.data.order || 0)) + 1 : 1;
                 await addDoc(listsCollectionRef, { 
                     name: listName,
                     order: newOrder,
                     createdAt: serverTimestamp(),
-                    isDeletable: true // Kullanıcının oluşturduğu listeler silinebilir
+                    isDeletable: true 
                 });
                 console.log("handleAddNewList: List added to Firestore successfully.");
-                if(newListInput) newListInput.value = ""; // Input alanını temizle
+                if(newListInput) newListInput.value = "";
             } catch (error) {
                 console.error("handleAddNewList: Error adding new list to Firestore:", error);
                 showAppErrorModal("Yeni liste eklenemedi: " + error.message);
@@ -531,7 +503,6 @@
             }
         }
 
-        // Bir listenin adını günceller
         async function updateListName(listId, newName) {
             if (!userId || !db) return false;
             if (!newName.trim()) {
@@ -549,11 +520,10 @@
             }
         }
         
-        // Bir listeyi ve içindeki tüm görevleri siler
         async function deleteUserList(listId) {
             if (!userId || !db) return;
             const listToDelete = localListsCache.find(l => l.id === listId);
-            if (!listToDelete || listToDelete.data.isDeletable === false) { // Varsayılan listeler silinemez
+            if (!listToDelete || listToDelete.data.isDeletable === false) { 
                  showAppErrorModal("Bu liste silinemez.");
                  return;
             }
@@ -561,22 +531,20 @@
             const userTodosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
             const userListsCollectionRef = collection(db, "artifacts", appId, "users", userId, "lists");
 
-            const batch = writeBatch(db); // Toplu işlem için batch oluştur
+            const batch = writeBatch(db);
             const tasksInListQuery = query(userTodosCollectionRef, where("listId", "==", listId));
             try {
-                // Listeye ait görevleri bul ve silme işlemine ekle
                 const tasksSnapshot = await getDocs(tasksInListQuery);
                 tasksSnapshot.forEach(taskDoc => {
                     batch.delete(doc(userTodosCollectionRef, taskDoc.id));
                 });
 
-                // Listeyi silme işlemine ekle
                 const listDocRef = doc(userListsCollectionRef, listId);
                 batch.delete(listDocRef);
 
-                await batch.commit(); // Toplu silme işlemini gerçekleştir
+                await batch.commit();
                 console.log(`Liste "${listToDelete.data.name}" ve görevleri silindi.`);
-                if (activeListId === listId) { // Silinen liste aktif listeyse, aktif listeyi sıfırla
+                if (activeListId === listId) { 
                     activeListId = null; 
                 }
             } catch (error) {
@@ -585,8 +553,6 @@
             }
         }
 
-        // --- Görev Yönetimi Fonksiyonları ---
-        // Firestore'a yeni bir görev (veya alt görev) ekler
         async function addTaskToFirestore(taskText, parentId = null, prefix = "", order = Date.now(), targetListId) {
             const fullTaskText = prefix ? `${prefix} ${taskText}` : taskText;
             if (fullTaskText.trim() === '') return Promise.resolve();  
@@ -602,8 +568,8 @@
                     completed: false,
                     createdAt: serverTimestamp(),
                     order: order, 
-                    parentId: parentId, // Alt görevse ana görevin ID'si
-                    listId: targetListId // Görevin ait olduğu liste ID'si
+                    parentId: parentId,
+                    listId: targetListId 
                 };
                 await addDoc(currentTodosCollectionRef, taskData);
                 return Promise.resolve();
@@ -613,40 +579,36 @@
             }
         }
         
-        // Bir sonraki görev için sıralama değerini hesaplar
         async function getNextOrderValue(parentId = null, targetListId = null) { 
             if (!targetListId && !parentId) { 
-                targetListId = activeListId; // Ana görev ekleniyorsa aktif listeyi kullan
-            } else if (parentId && !targetListId) { // Alt görev ekleniyorsa ana görevin listesini kullan
+                targetListId = activeListId;
+            } else if (parentId && !targetListId) { 
                 const parentTask = localTasksCache.find(t => t.id === parentId);
                 targetListId = parentTask?.data.listId;
             }
 
             if (!targetListId) { 
                 console.warn("getNextOrderValue: Hedef listId belirlenemedi.");
-                return Date.now(); // Hata durumunda zaman damgasını kullan
+                return Date.now();
             }
 
             let relevantTasks;
-            if (parentId) { // Alt görevler için
+            if (parentId) { 
                 relevantTasks = localTasksCache.filter(t => t.data.parentId === parentId && t.data.listId === targetListId);
-            } else { // Ana görevler için
+            } else { 
                 relevantTasks = localTasksCache.filter(t => !t.data.parentId && t.data.listId === targetListId);
             }
             if (relevantTasks.length > 0) {
                 return Math.max(...relevantTasks.map(t => t.data.order || 0)) + 1;
             }
-            return Date.now(); // İlk görevse zaman damgasını kullan
+            return Date.now();
         }
 
-        // Bir ana görevi Gemini API kullanarak alt görevlere böler
         async function breakDownTaskIntoSubtasks(originalTaskId, originalTaskText, buttonElement, parentListId) {
             if (!userId) { showAppErrorModal('Oturum açılmalı.'); return; }
-            if (buttonElement) {
-                buttonElement.disabled = true;
-                const originalButtonText = buttonElement.innerHTML; 
-                buttonElement.innerHTML = `<svg class="animate-spin h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg> Parçalıyor...`;
-            }
+            buttonElement.disabled = true;
+            const originalButtonText = buttonElement.innerHTML; 
+            buttonElement.innerHTML = `<svg class="animate-spin h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg> Parçalıyor...`;
             const prompt = `Bir yapılacaklar listesi için, şu ana görevi daha küçük, somut ve yönetilebilir alt görevlere ayır. Her bir alt görevi ayrı bir satırda listele. Sadece alt görevlerin listesini ver:\n\nAna Görev: "${originalTaskText}"`;
 
             try {
@@ -663,21 +625,16 @@
                     }
                 }
             } finally {
-                if (buttonElement) {
-                    buttonElement.disabled = false;
-                    buttonElement.innerHTML = `↪️ <span class="ml-2">Görevi Parçala</span>`; // Buton metnini ve ikonunu geri yükle
-                }
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = originalButtonText;
             }
         }
         
-        // Bir görevi Gemini API kullanarak detaylandırır (notlar, sorular ekler)
         async function elaborateTask(originalTaskId, originalTaskText, buttonElement, parentListId) {
              if (!userId) { showAppErrorModal('Oturum açılmalı.'); return; }
-            if(buttonElement) {
-                buttonElement.disabled = true;
-                const originalButtonText = buttonElement.innerHTML;
-                buttonElement.innerHTML = `<svg class="animate-spin h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg> Detaylıyor...`;
-            }
+            buttonElement.disabled = true;
+            const originalButtonText = buttonElement.innerHTML;
+            buttonElement.innerHTML = `<svg class="animate-spin h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 9.27455 20.9097 6.80375 19.1414 5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg> Detaylıyor...`;
             const prompt = `Kullanıcı yapılacaklar listesine şunu ekledi: '${originalTaskText}'. Bu görevin uygulanmasına yardımcı olmak için 3-5 adet soru, not veya alt adım içeren bir liste oluştur. Her maddeyi yeni satırda listele. Sadece listeyi ver:`;
 
             try {
@@ -694,16 +651,12 @@
                     }
                 }
             } finally {
-                if(buttonElement) {
-                    buttonElement.disabled = false;
-                    buttonElement.innerHTML = `✨ <span class="ml-2">Görevi Detaylandır</span>`; // Buton metnini ve ikonunu geri yükle
-                }
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = originalButtonText;
             }
         }
 
-        // Kullanıcının girdiği metinden yeni bir görev ekler
         async function addTaskFromInput() {
-            if (!taskInput || !listSelectorForNewTask || !addTaskButton) return; // Gerekli elemanlar yoksa çık
             const taskText = taskInput.value.trim();
             const selectedListId = listSelectorForNewTask.value; 
             
@@ -726,9 +679,9 @@
             try {
                 const newOrder = await getNextOrderValue(null, selectedListId);
                 await addTaskToFirestore(taskText, null, "", newOrder, selectedListId); 
-                taskInput.value = ''; // Input alanını temizle
+                taskInput.value = ''; 
                 
-                if (activeListId !== selectedListId) { // Görev farklı bir listeye eklendiyse o listeyi aktif yap
+                if (activeListId !== selectedListId) { 
                     activeListId = selectedListId;
                     renderAppUI(); 
                 }
@@ -742,7 +695,6 @@
             }
         }
         
-        // Bir görevin tamamlanma durumunu değiştirir
         async function toggleTaskCompleted(taskId, currentStatus) {
              if (!userId || !db) { showAppErrorModal('Oturum açılmalı veya veritabanı hazır değil.'); return; }
             const taskDocRef = doc(db, "artifacts", appId, "users", userId, "todos", taskId);
@@ -750,31 +702,26 @@
             catch (error) { showAppErrorModal(`Görev güncellenirken hata: ${error.message}`); }
         }
 
-        // Bir görevi ve tüm alt görevlerini siler
         async function deleteTask(taskId) {
             if (!userId || !db) { showAppErrorModal('Oturum açılmalı veya veritabanı hazır değil.'); return; }
             const userTodosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
             const batch = writeBatch(db);
-            const tasksToDeleteIds = [taskId]; // Başlangıçta ana görevi ekle
-
-            // Görevin tüm alt görevlerini (ve onların alt görevlerini) bul
+            const tasksToDeleteIds = [taskId];
             function findDescendants(currentParentId) {
                 const directChildren = localTasksCache.filter(t => t.data.parentId === currentParentId);
                 for (const child of directChildren) {
                     tasksToDeleteIds.push(child.id);
-                    findDescendants(child.id); // Özyinelemeli olarak devam et
+                    findDescendants(child.id); 
                 }
             }
-            findDescendants(taskId); // Ana görevden başla
-
-            tasksToDeleteIds.forEach(idToDelete => { // Tüm bulunantaskları silme işlemine ekle
+            findDescendants(taskId);
+            tasksToDeleteIds.forEach(idToDelete => {
                 batch.delete(doc(userTodosCollectionRef, idToDelete));
             });
-            try { await batch.commit(); } // Toplu sil
+            try { await batch.commit(); }
             catch (error) { showAppErrorModal(`Görev(ler) silinirken hata: ${error.message}`); }
         }
         
-        // Bir görevin metnini günceller
         async function updateTaskText(taskId, newText) {
             if (!userId || !db) { showAppErrorModal('Oturum açılmalı veya veritabanı hazır değil.'); return; }
             if (newText.trim() === '') { showAppErrorModal('Görev metni boş olamaz!'); return; }
@@ -783,38 +730,36 @@
             catch (error) { showAppErrorModal(`Görev metni güncellenirken hata: ${error.message}`); }
         }
 
-        // Bir görevi listede yukarı veya aşağı taşır
         async function moveTask(taskId, direction) { 
              if (!userId || !db) { showAppErrorModal('Sıralama için oturum açılmalı.'); return; }
             const currentTaskDoc = localTasksCache.find(t => t.id === taskId);
             if (!currentTaskDoc) return;
             
-            const parentId = currentTaskDoc.data.parentId; // Görevin ana görevi var mı?
-            const taskListId = currentTaskDoc.data.listId; // Görev hangi listede?
+            const parentId = currentTaskDoc.data.parentId;
+            const taskListId = currentTaskDoc.data.listId; 
             
-            let siblings; // Aynı seviyedeki diğer görevler (kardeşler)
-            if (parentId) { // Alt görevse, aynı ana göreve bağlı kardeşleri bul
+            let siblings;
+            if (parentId) { 
                 siblings = localTasksCache.filter(t => t.data.parentId === parentId && t.data.listId === taskListId).sort((a,b) => a.data.order - b.data.order);
-            } else { // Ana görevse, aynı listedeki diğer ana görevleri bul
+            } else { 
                 siblings = localTasksCache.filter(t => !t.data.parentId && t.data.listId === taskListId).sort((a,b) => a.data.order - b.data.order);
             }
             
-            const taskIndex = siblings.findIndex(t => t.id === taskId); // Taşınacak görevin indeksi
+            const taskIndex = siblings.findIndex(t => t.id === taskId);
             if (taskIndex === -1) return;
 
-            let otherTaskIndex; // Yer değiştirilecek diğer görevin indeksi
+            let otherTaskIndex;
             if (direction === 'up') {
-                if (taskIndex === 0) return; // En üstteyse hareket etme
+                if (taskIndex === 0) return; 
                 otherTaskIndex = taskIndex - 1;
             } else { 
-                if (taskIndex === siblings.length - 1) return; // En alttaysa hareket etme
+                if (taskIndex === siblings.length - 1) return; 
                 otherTaskIndex = taskIndex + 1;
             }
 
-            const task1 = siblings[taskIndex]; // Taşınan görev
-            const task2 = siblings[otherTaskIndex]; // Yer değiştirilen görev
+            const task1 = siblings[taskIndex];
+            const task2 = siblings[otherTaskIndex];
 
-            // İki görevin order değerlerini takas et
             const batch = writeBatch(db);
             const task1Ref = doc(db, "artifacts", appId, "users", userId, "todos", task1.id);
             const task2Ref = doc(db, "artifacts", appId, "users", userId, "todos", task2.id);
@@ -824,28 +769,27 @@
             catch (error) { showAppErrorModal(`Görevler sıralanırken hata: ${error.message}`); }
         }
 
-        // Bir alt görevi ana göreve dönüştürür
         async function promoteTaskToMain(taskId) { 
             if (!userId || !db) { showAppErrorModal('Oturum açılmalı.'); return; }
             const taskToPromote = localTasksCache.find(t => t.id === taskId);
-            if (!taskToPromote || !taskToPromote.data.parentId) return; // Ana görevi yoksa veya zaten ana görevse çık
+            if (!taskToPromote || !taskToPromote.data.parentId) return; 
 
             const parentTask = localTasksCache.find(t => t.id === taskToPromote.data.parentId);
-            const targetListId = parentTask?.data.listId || activeListId; // Ana görevin listesini veya aktif listeyi kullan
+            const targetListId = parentTask?.data.listId || activeListId; 
 
             if (!targetListId) {
                  showAppErrorModal("Hedef liste bulunamadı.");
                  return;
             }
             
-            const newOrder = await getNextOrderValue(null, targetListId); // Yeni ana görevler için sıralama değeri al
+            const newOrder = await getNextOrderValue(null, targetListId);
 
             const taskDocRef = doc(db, "artifacts", appId, "users", userId, "todos", taskId);
             try {
                 await updateDoc(taskDocRef, {
-                    parentId: null, // Ana görev ID'sini null yap
+                    parentId: null,
                     order: newOrder,
-                    listId: targetListId // Gerekirse listesini güncelle
+                    listId: targetListId 
                 });
             } catch (error) {
                 showAppErrorModal(`Alt görev ana göreve taşınırken hata: ${error.message}`);
@@ -853,16 +797,14 @@
         }
         
         // --- UI Render Fonksiyonları ---
-        // Sol paneldeki listeleri render eder
         function renderListsUI() {
             if (!listsContainerEl) return;
-            listsContainerEl.innerHTML = ''; // Önceki listeleri temizle
+            listsContainerEl.innerHTML = '';
             
-            const sortedLists = [...localListsCache].sort((a,b) => (a.data.order || 0) - (b.data.order || 0)); // Listeleri sırala
+            const sortedLists = [...localListsCache].sort((a,b) => (a.data.order || 0) - (b.data.order || 0));
 
-            const tasksPanelExists = document.getElementById('tasksPanel'); // Sağ panel var mı?
+            const tasksPanelExists = document.getElementById('tasksPanel');
 
-            // Hiç liste yoksa ilgili mesajları ve UI durumlarını ayarla
             if (sortedLists.length === 0 && userId) {
                 if(globalNoListsMessage) globalNoListsMessage.classList.remove('hidden');
                 if(tasksPanelExists) tasksPanelExists.classList.add('hidden'); 
@@ -870,28 +812,26 @@
                 if(taskInput) taskInput.disabled = true;
                 if(addTaskButton) addTaskButton.disabled = true;
                 return;
-            } else if (userId) { // Listeler varsa UI'ı normale döndür
+            } else {
                  if(globalNoListsMessage) globalNoListsMessage.classList.add('hidden');
                  if(tasksPanelExists) tasksPanelExists.classList.remove('hidden');
                  if(taskInput) taskInput.disabled = false;
                  if(addTaskButton) addTaskButton.disabled = false;
             }
 
-            // Yeni görev ekleme alanındaki liste seçicisini doldur
             if (listSelectorForNewTask) {
                 listSelectorForNewTask.innerHTML = '';
                 sortedLists.forEach(listDoc => {
                     const option = document.createElement('option');
                     option.value = listDoc.id;
                     option.textContent = listDoc.data.name;
-                    if (listDoc.id === activeListId) { // Aktif listeyi seçili yap
+                    if (listDoc.id === activeListId) {
                         option.selected = true;
                     }
                     listSelectorForNewTask.appendChild(option);
                 });
             }
 
-            // Her bir listeyi UI'da oluştur
             sortedLists.forEach(listDoc => {
                 const list = listDoc.data;
                 const listId = listDoc.id;
@@ -905,21 +845,21 @@
                 listNameSpan.className = "flex-grow truncate list-name-span";
                 listItemEl.appendChild(listNameSpan);
                 
-                const listEditInput = document.createElement('input'); // Liste adı düzenleme input'u
+                const listEditInput = document.createElement('input');
                 listEditInput.type = 'text';
                 listEditInput.value = list.name;
                 listEditInput.className = "hidden flex-grow bg-white text-gray-800 border border-cyan-500 rounded px-1 py-0.5 text-sm list-name-input";
                 listItemEl.appendChild(listEditInput);
 
 
-                const actionsDiv = document.createElement('div'); // Düzenleme ve silme butonları için container
+                const actionsDiv = document.createElement('div');
                 actionsDiv.className = "flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity";
                 
                 const editListButton = document.createElement('button');
                 editListButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ${listId === activeListId ? 'text-white/80 hover:text-white' : 'text-gray-500 hover:text-cyan-600'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`;
                 editListButton.title = "Listeyi Yeniden Adlandır";
                 editListButton.className = "p-1 rounded hover:bg-gray-300/50 edit-list-btn";
-                editListButton.onclick = (e) => { // Liste düzenleme moduna geç
+                editListButton.onclick = (e) => {
                     e.stopPropagation();
                     listItemEl.classList.add('editing-list');
                     listNameSpan.classList.add('hidden');
@@ -931,7 +871,7 @@
                 };
                 actionsDiv.appendChild(editListButton);
 
-                if (list.isDeletable !== false) { // Silinemez olarak işaretlenmemişse silme butonu ekle
+                if (list.isDeletable !== false) { 
                     const deleteListBtn = document.createElement('button');
                     deleteListBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ${listId === activeListId ? 'text-red-300 hover:text-red-100' : 'text-red-400 hover:text-red-600'}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
                     deleteListBtn.title = "Listeyi Sil";
@@ -941,15 +881,15 @@
                 }
                 listItemEl.appendChild(actionsDiv);
                 
-                const saveCancelListActions = document.createElement('div'); // Kaydet/İptal butonları (liste düzenleme için)
+                const saveCancelListActions = document.createElement('div');
                 saveCancelListActions.className = 'save-cancel-list-actions hidden flex items-center space-x-1 ml-2';
                 const saveListNameBtn = document.createElement('button');
                 saveListNameBtn.textContent = '✓';
                 saveListNameBtn.className = `text-xs p-1 rounded ${listId === activeListId ? 'bg-green-200 text-green-800 hover:bg-green-300' : 'bg-green-500 text-white hover:bg-green-600'}`;
-                saveListNameBtn.onclick = async (e) => { // Liste adını kaydet
+                saveListNameBtn.onclick = async (e) => {
                     e.stopPropagation();
                     const success = await updateListName(listId, listEditInput.value);
-                    if (success) { // Başarılıysa UI'ı güncelle
+                    if (success) {
                          listItemEl.classList.remove('editing-list');
                          listNameSpan.classList.remove('hidden');
                          listEditInput.classList.add('hidden');
@@ -960,7 +900,7 @@
                 const cancelListNameBtn = document.createElement('button');
                 cancelListNameBtn.textContent = '✕';
                 cancelListNameBtn.className = `text-xs p-1 rounded ${listId === activeListId ? 'bg-red-200 text-red-800 hover:bg-red-300' : 'bg-gray-400 text-white hover:bg-gray-500'}`;
-                cancelListNameBtn.onclick = (e) => { // Düzenlemeyi iptal et
+                cancelListNameBtn.onclick = (e) => {
                      e.stopPropagation();
                      listEditInput.value = listNameSpan.textContent; 
                      listItemEl.classList.remove('editing-list');
@@ -973,27 +913,15 @@
                 saveCancelListActions.appendChild(cancelListNameBtn);
                 listItemEl.appendChild(saveCancelListActions);
 
-                // Listeye tıklandığında aktif yap ve mobil menüyü kapat
                 listItemEl.addEventListener('click', () => {
                     if (listItemEl.classList.contains('editing-list')) return; 
                     activeListId = listId;
                     renderAppUI(); 
-
-                    if (window.innerWidth < 768) {
-                        if (listsPanel) {
-                            listsPanel.classList.add('-translate-x-full');
-                        }
-                        if (sidebarOverlay) {
-                            sidebarOverlay.classList.add('hidden');
-                        }
-                        document.body.style.overflow = '';
-                    }
                 });
                 listsContainerEl.appendChild(listItemEl);
             });
         }
         
-        // Bir görev düğümünü (ve alt görevlerini) UI'da render eder
         function renderTaskNode(taskDoc, level, childrenMap, targetElement) {
             const task = taskDoc.data;
             const taskId = taskDoc.id;
@@ -1001,42 +929,42 @@
 
             const listItem = document.createElement('li');
             listItem.className = `mb-1 rounded-lg transition-all duration-300 ease-in-out flex flex-col ${task.completed ? 'opacity-60' : ''}`;
-            listItem.style.marginLeft = `${level * 18}px`; // Alt görevler için girinti
-            if (level > 0) { // Alt görevse sol kenarlık ekle
+            listItem.style.marginLeft = `${level * 18}px`; 
+            if (level > 0) {
                  listItem.classList.add('border-l-2', 'border-gray-300', 'pl-1.5', 'pt-0.5');
             }
             
-            const taskWrapper = document.createElement('div'); // Görev içeriği ve düzenleme butonları için
+            const taskWrapper = document.createElement('div'); 
             listItem.appendChild(taskWrapper);
 
-            const topRow = document.createElement('div'); // Checkbox, metin ve aksiyon butonları
+            const topRow = document.createElement('div');
             topRow.className = `flex items-center justify-between p-1.5 rounded-md ${task.completed ? 'bg-green-50' : 'bg-white hover:bg-gray-50 shadow-sm'}`;
             
-            const leftSection = document.createElement('div'); // Checkbox, metin, sıralama ve çökertme butonları
-            leftSection.className = 'flex items-center flex-grow min-w-0'; // min-w-0 metin taşmasını engeller
+            const leftSection = document.createElement('div');
+            leftSection.className = 'flex items-center flex-grow min-w-0';
 
-            const children = childrenMap.get(taskId) || []; // Bu görevin alt görevleri
-            if (children.length > 0) { // Alt görevi varsa çökertme/açma butonu ekle
+            const children = childrenMap.get(taskId) || [];
+            if (children.length > 0) {
                 const collapseButton = document.createElement('button');
                 collapseButton.className = 'mr-1 p-0.5 rounded hover:bg-gray-200 focus:outline-none';
                 taskDoc.isCollapsed = taskDoc.isCollapsed === undefined ? false : taskDoc.isCollapsed; 
                 collapseButton.innerHTML = taskDoc.isCollapsed ? 
-                    `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>` : // Açık ikonu
-                    `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`; // Kapalı ikonu
+                    `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>` : 
+                    `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`; 
                 
-                collapseButton.addEventListener('click', (e) => { // Tıklandığında durumu değiştir ve UI'ı yeniden render et
+                collapseButton.addEventListener('click', (e) => {
                     e.stopPropagation();
                     taskDoc.isCollapsed = !taskDoc.isCollapsed;
                     renderAppUI(); 
                 });
                 leftSection.appendChild(collapseButton);
-            } else if (level === 0) { // En üst seviyedeki görevse ve alt görevi yoksa, hizalama için boşluk bırak
+            } else if (level === 0) { 
                  const spacer = document.createElement('div');
                  spacer.className = 'w-[18px] mr-1'; 
                  leftSection.appendChild(spacer);
             }
 
-            const orderButtons = document.createElement('div'); // Yukarı/aşağı taşıma butonları
+            const orderButtons = document.createElement('div');
             orderButtons.className = 'flex flex-col mr-1 space-y-px';
             
             const parentIdForSiblings = task.parentId || null;
@@ -1051,14 +979,14 @@
             const upButton = document.createElement('button');
             upButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-gray-400 hover:text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" /></svg>`;
             upButton.className = 'p-px rounded-sm hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed';
-            upButton.disabled = currentIndexInSiblings === 0; // En üstteyse devre dışı bırak
+            upButton.disabled = currentIndexInSiblings === 0;
             upButton.addEventListener('click', (e) => { e.stopPropagation(); moveTask(taskId, 'up'); });
             orderButtons.appendChild(upButton);
 
             const downButton = document.createElement('button');
             downButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-gray-400 hover:text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>`;
             downButton.className = 'p-px rounded-sm hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed';
-            downButton.disabled = currentIndexInSiblings === siblings.length - 1; // En alttaysa devre dışı bırak
+            downButton.disabled = currentIndexInSiblings === siblings.length - 1;
             downButton.addEventListener('click', (e) => { e.stopPropagation(); moveTask(taskId, 'down'); });
             orderButtons.appendChild(downButton);
             leftSection.appendChild(orderButtons);
@@ -1075,88 +1003,62 @@
             taskTextElement.className = `task-text text-gray-700 text-sm sm:text-base truncate ${task.completed ? 'line-through text-gray-400' : ''}`;
             leftSection.appendChild(taskTextElement);
 
-            const editInput = document.createElement('input'); // Görev metni düzenleme input'u
+            const editInput = document.createElement('input');
             editInput.type = 'text';
             editInput.value = task.text;
             editInput.className = 'edit-input hidden flex-grow p-0.5 border border-indigo-300 rounded-md focus:ring-1 focus:ring-indigo-500 text-sm sm:text-base';
             leftSection.appendChild(editInput);
             topRow.appendChild(leftSection);
 
-            // --- Kebab Menü ve Diğer Aksiyon Butonları ---
             const taskActions = document.createElement('div');
             taskActions.className = 'task-actions flex items-center space-x-1 sm:space-x-1.5 flex-shrink-0 ml-1';
 
-            if (!task.completed) { // Görev tamamlanmamışsa düzenleme ve Gemini butonlarını göster
+            if (!task.completed) {
+                if (task.parentId) {
+                    const promoteButton = document.createElement('button');
+                    promoteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-500 hover:text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l4-4m-4 4l4 4" /></svg>`;
+                    promoteButton.className = 'p-0.5 sm:p-1 rounded-md hover:bg-gray-200';
+                    promoteButton.title = "Ana Görev Yap";
+                    promoteButton.addEventListener('click', (e) => { e.stopPropagation(); promoteTaskToMain(taskId); });
+                    taskActions.appendChild(promoteButton);
+                }
+
                 const editButton = document.createElement('button');
-                editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 sm:h-4 sm:w-4 text-gray-500 hover:text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`;
-                editButton.className = 'p-1.5 sm:p-1 rounded-md hover:bg-gray-200 edit-action-btn';
-                editButton.title = "Görevi Düzenle";
-                editButton.addEventListener('click', (e) => { // Görev düzenleme moduna geç
-                    e.stopPropagation();
-                    taskWrapper.classList.add('editing');
+                editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-500 hover:text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`;
+                editButton.className = 'p-0.5 sm:p-1 rounded-md hover:bg-gray-200 edit-action-btn';
+                editButton.addEventListener('click', (e) => { 
+                     e.stopPropagation();
+                    taskWrapper.classList.add('editing'); 
                     topRow.querySelector('.task-text').classList.add('hidden');
                     topRow.querySelector('.edit-input').classList.remove('hidden');
                     topRow.querySelector('.edit-input').focus(); topRow.querySelector('.edit-input').select();
-                    taskActions.querySelectorAll('.edit-action-btn, .delete-action, .kebab-menu-container').forEach(btn => btn.classList.add('hidden'));
+                    taskActions.querySelectorAll('.gemini-action, .delete-action, .edit-action-btn, button[title*="Taşı"], button[title="Ana Görev Yap"]').forEach(btn => btn.classList.add('hidden'));
                     taskWrapper.querySelector('.save-cancel-actions').classList.remove('hidden');
                 });
                 taskActions.appendChild(editButton);
 
-                // Kebab Menü
-                const kebabMenuContainer = document.createElement('div');
-                kebabMenuContainer.className = 'kebab-menu-container';
-
-                const kebabButton = document.createElement('button'); // Üç nokta butonu
-                kebabButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-5 sm:w-5 text-gray-500 hover:text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01" /></svg>`;
-                kebabButton.className = 'p-1 rounded-full hover:bg-gray-200';
-                kebabMenuContainer.appendChild(kebabButton);
-
-                const kebabDropdown = document.createElement('div'); // Açılır menü
-                kebabDropdown.className = 'kebab-dropdown hidden'; // Başlangıçta gizli
-
-                // Detaylandır butonu
                 const elaborateButton = document.createElement('button');
-                elaborateButton.innerHTML = `✨ <span class="ml-2">Görevi Detaylandır</span>`;
-                elaborateButton.addEventListener('click', (e) => { e.stopPropagation(); elaborateTask(taskId, task.text, elaborateButton, parentListId); kebabDropdown.classList.add('hidden');});
-                kebabDropdown.appendChild(elaborateButton);
+                elaborateButton.innerHTML = `✨`; 
+                elaborateButton.className = 'gemini-action bg-blue-400 hover:bg-blue-500 text-white font-medium py-0.5 px-1 rounded-md shadow-sm text-xs';
+                elaborateButton.title = "Görevi Detaylandır";
+                elaborateButton.addEventListener('click', (e) => { e.stopPropagation(); elaborateTask(taskId, task.text, elaborateButton, parentListId); });
+                taskActions.appendChild(elaborateButton);
 
-                // Parçala butonu
                 const breakDownButton = document.createElement('button');
-                breakDownButton.innerHTML = `↪️ <span class="ml-2">Görevi Parçala</span>`;
-                breakDownButton.addEventListener('click', (e) => { e.stopPropagation(); breakDownTaskIntoSubtasks(taskId, task.text, breakDownButton, parentListId); kebabDropdown.classList.add('hidden');});
-                kebabDropdown.appendChild(breakDownButton);
-
-                if (task.parentId) { // Alt görevse "Ana Görev Yap" butonu ekle
-                    const promoteButton = document.createElement('button');
-                    promoteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l4-4m-4 4l4 4" /></svg> <span class="ml-2">Ana Görev Yap</span>`;
-                    promoteButton.addEventListener('click', (e) => { e.stopPropagation(); promoteTaskToMain(taskId); kebabDropdown.classList.add('hidden');});
-                    kebabDropdown.appendChild(promoteButton);
-                }
-
-                kebabMenuContainer.appendChild(kebabDropdown);
-                taskActions.appendChild(kebabMenuContainer);
-
-                // Kebab menüyü aç/kapat
-                kebabButton.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    // Diğer açık kebab menülerini kapat
-                    document.querySelectorAll('.kebab-dropdown:not(.hidden)').forEach(openDropdown => {
-                        if (openDropdown !== kebabDropdown) {
-                            openDropdown.classList.add('hidden');
-                        }
-                    });
-                    kebabDropdown.classList.toggle('hidden');
-                });
+                breakDownButton.innerHTML = `↪️`; 
+                breakDownButton.className = 'gemini-action bg-yellow-400 hover:bg-yellow-500 text-yellow-800 font-medium py-0.5 px-1 rounded-md shadow-sm text-xs';
+                breakDownButton.title = "Görevi Parçala";
+                breakDownButton.addEventListener('click', (e) => { e.stopPropagation(); breakDownTaskIntoSubtasks(taskId, task.text, breakDownButton, parentListId); });
+                taskActions.appendChild(breakDownButton);
             }
 
-            const deleteButton = document.createElement('button'); // Her zaman görünen silme butonu
+            const deleteButton = document.createElement('button');
             deleteButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-400 hover:text-red-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>`;
-            deleteButton.className = 'delete-action p-1.5 sm:p-1 rounded-full hover:bg-red-100';
+            deleteButton.className = 'delete-action p-0.5 sm:p-1 rounded-full hover:bg-red-100';
             deleteButton.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(taskId); });
             taskActions.appendChild(deleteButton);
             topRow.appendChild(taskActions);
 
-            // Düzenleme modundayken görünecek Kaydet/İptal butonları
             const saveCancelActions = document.createElement('div');
             saveCancelActions.className = 'save-cancel-actions hidden flex items-center space-x-1.5 mt-1 self-end mr-1';
             const saveButton = document.createElement('button');
@@ -1170,8 +1072,13 @@
                 taskWrapper.classList.remove('editing'); 
                 topRow.querySelector('.task-text').classList.remove('hidden');
                 topRow.querySelector('.edit-input').classList.add('hidden');
-                // Butonları tekrar görünür yap
-                taskActions.querySelectorAll('.kebab-menu-container, .delete-action, .edit-action-btn').forEach(btn => btn.classList.remove('hidden'));
+                taskActions.querySelectorAll('.gemini-action, .delete-action, .edit-action-btn, button[title*="Taşı"], button[title="Ana Görev Yap"]').forEach(btn => btn.classList.remove('hidden'));
+                if(task.completed) {
+                    taskActions.querySelector('.edit-action-btn')?.classList.add('hidden');
+                    taskActions.querySelector('.gemini-action[title*="Detay"]')?.classList.add('hidden');
+                    taskActions.querySelector('.gemini-action[title*="Parçala"]')?.classList.add('hidden');
+                    taskActions.querySelector('button[title="Ana Görev Yap"]')?.classList.add('hidden');
+                }
                 taskWrapper.querySelector('.save-cancel-actions').classList.add('hidden');
             });
             const cancelButton = document.createElement('button');
@@ -1179,11 +1086,17 @@
             cancelButton.className = 'bg-gray-300 hover:bg-gray-400 text-gray-700 py-0.5 px-2 rounded text-xs';
             cancelButton.addEventListener('click', (e) => { 
                 e.stopPropagation();
-                topRow.querySelector('.edit-input').value = topRow.querySelector('.task-text').textContent; // Input'u eski haline getir
+                topRow.querySelector('.edit-input').value = topRow.querySelector('.task-text').textContent;
                 taskWrapper.classList.remove('editing'); 
                 topRow.querySelector('.task-text').classList.remove('hidden');
                 topRow.querySelector('.edit-input').classList.add('hidden');
-                taskActions.querySelectorAll('.kebab-menu-container, .delete-action, .edit-action-btn').forEach(btn => btn.classList.remove('hidden'));
+                taskActions.querySelectorAll('.gemini-action, .delete-action, .edit-action-btn, button[title*="Taşı"], button[title="Ana Görev Yap"]').forEach(btn => btn.classList.remove('hidden'));
+                 if(task.completed) {
+                    taskActions.querySelector('.edit-action-btn')?.classList.add('hidden');
+                    taskActions.querySelector('.gemini-action[title*="Detay"]')?.classList.add('hidden');
+                    taskActions.querySelector('.gemini-action[title*="Parçala"]')?.classList.add('hidden');
+                    taskActions.querySelector('button[title="Ana Görev Yap"]')?.classList.add('hidden');
+                 }
                 taskWrapper.querySelector('.save-cancel-actions').classList.add('hidden');
             });
             saveCancelActions.appendChild(saveButton);
@@ -1192,42 +1105,38 @@
             taskWrapper.appendChild(topRow);
             taskWrapper.appendChild(saveCancelActions);
             
-            targetElement.appendChild(listItem); // Görevi hedef elemente (ul) ekle
+            targetElement.appendChild(listItem);
 
-            // Görev çökertilmemişse ve alt görevleri varsa onları da render et
             if (!taskDoc.isCollapsed && children.length > 0) {
                 const subTaskList = document.createElement('ul');
                 subTaskList.className = 'subtask-list'; 
                 listItem.appendChild(subTaskList); 
-                children.sort((a,b)=> a.data.order - b.data.order); // Alt görevleri sırala
+                children.sort((a,b)=> a.data.order - b.data.order);
                 children.forEach((childDoc) => { 
-                    renderTaskNode(childDoc, level + 1, childrenMap, subTaskList); // Özyinelemeli çağrı
+                    renderTaskNode(childDoc, level + 1, childrenMap, subTaskList);
                 });
             }
         }
         
-        // Ana uygulama UI'ını render eder (listeler ve görevler)
         function renderAppUI() {
-            if (!userId) { // Kullanıcı giriş yapmamışsa auth ekranını göster
+            if (!userId) { 
                 if (authContainer) authContainer.classList.remove('hidden');
                 if (appMainContainer) appMainContainer.classList.add('hidden');
                 return;
             }
 
-            // Kullanıcı giriş yapmışsa ana uygulama ekranını göster
             if (authContainer) authContainer.classList.add('hidden');
             if (appMainContainer) appMainContainer.classList.remove('hidden');
             
-            renderListsUI(); // Sol paneli render et
+            renderListsUI(); 
             
-            // Aktif liste yoksa ve listeler varsa ilkini aktif yap
             if (!activeListId && localListsCache.length > 0) {
                  const sortedLists = [...localListsCache].sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
                  activeListId = sortedLists[0].id; 
                 if (listSelectorForNewTask && listSelectorForNewTask.options.length > 0) {
-                     listSelectorForNewTask.value = activeListId; // Yeni görev ekleme select'ini güncelle
+                     listSelectorForNewTask.value = activeListId;
                 }
-            } else if (localListsCache.length === 0 && userId) { // Hiç liste yoksa görev panelini gizle
+            } else if (localListsCache.length === 0) {
                 if(globalNoListsMessage) globalNoListsMessage.classList.remove('hidden');
                 if(tasksPanel) tasksPanel.classList.add('hidden'); 
                 if(activeListNameHeader) activeListNameHeader.textContent = "Liste Yok";
@@ -1235,20 +1144,21 @@
                 if (listSelectorForNewTask) listSelectorForNewTask.innerHTML = '<option value="">Liste Yok</option>';
                 if(taskInput) taskInput.disabled = true;
                 if(addTaskButton) addTaskButton.disabled = true;
+
                 return;
             }
-            if(tasksPanel && userId) tasksPanel.classList.remove('hidden'); 
+             if(tasksPanel) tasksPanel.classList.remove('hidden'); 
 
             const activeList = localListsCache.find(l => l.id === activeListId);
-            if (activeListNameHeader) { // Aktif liste başlığını güncelle
+            if (activeListNameHeader) {
                 activeListNameHeader.textContent = activeList ? activeList.data.name : "Bir Liste Seçin";
                 activeListNameHeader.className = `text-2xl font-semibold mb-3 pb-1 border-b-2 ${activeListId === defaultListTodayId ? 'text-emerald-700 border-emerald-500' : (activeListId === defaultListLaterId ? 'text-sky-700 border-sky-500' : 'text-gray-700 border-gray-400')}`;
             }
             
-            if(activeTaskList) activeTaskList.innerHTML = ''; // Önceki görevleri temizle
-            if(noTasksInListMessage) noTasksInListMessage.classList.add('hidden'); // "Görev yok" mesajını gizle
+            if(activeTaskList) activeTaskList.innerHTML = '';
+            if(noTasksInListMessage) noTasksInListMessage.classList.add('hidden');
 
-            if (!activeListId && userId) { // Aktif liste seçilmemişse mesaj göster
+            if (!activeListId) {
                 if(noTasksInListMessage) {
                      noTasksInListMessage.textContent = "Lütfen çalışmak için bir liste seçin.";
                      noTasksInListMessage.classList.remove('hidden');
@@ -1256,58 +1166,55 @@
                 return;
             }
 
-            // Aktif listedeki görevleri ve alt görevleri haritala
-            const childrenMap = new Map(); // { parentId: [childTaskDoc, ...] }
-            const topLevelTasksInActiveList = []; // Sadece ana görevler
+            const childrenMap = new Map();
+            const topLevelTasksInActiveList = [];
 
-            // Firestore'dan gelen tüm görevleri (önbellekteki) filtrele
             const allTasks = localTasksCache.filter(item => item.data && item.data.hasOwnProperty('listId')); 
 
+
             allTasks.forEach(taskDoc => { 
-                if (taskDoc.data.listId === activeListId) { // Sadece aktif listedeki görevler
+                if (taskDoc.data.listId === activeListId) { 
                     const parentId = taskDoc.data.parentId;
-                    if (parentId) { // Alt görevse childrenMap'e ekle
+                    if (parentId) {
                         if (!childrenMap.has(parentId)) childrenMap.set(parentId, []);
                         childrenMap.get(parentId).push(taskDoc);
-                    } else { // Ana görevse topLevelTasksInActiveList'e ekle
+                    } else {
                         topLevelTasksInActiveList.push(taskDoc);
                     }
                 }
             });
             
-            topLevelTasksInActiveList.sort((a,b) => (a.data.order || 0) - (b.data.order || 0)); // Ana görevleri sırala
+            topLevelTasksInActiveList.sort((a,b) => (a.data.order || 0) - (b.data.order || 0));
 
-            if (topLevelTasksInActiveList.length === 0 && childrenMap.size === 0 && userId) { // Hiç görev yoksa mesaj göster
+            if (topLevelTasksInActiveList.length === 0 && childrenMap.size === 0 && userId) { 
                 if(noTasksInListMessage) {
                      noTasksInListMessage.textContent = `Bu listede (${activeList?.data.name || ''}) henüz görev yok.`;
                      noTasksInListMessage.classList.remove('hidden');
                 }
-            } else if (userId) { // Görevler varsa render et
+            } else if (userId) { 
                 topLevelTasksInActiveList.forEach((taskDoc) => renderTaskNode(taskDoc, 0, childrenMap, activeTaskList));
             }
         }
 
 
         // --- Firebase Dinleyicileri ---
-        // Kullanıcıya özel verileri (listeler ve görevler) dinler
         function listenToUserSpecificData() {
             if (!userId || !db) return;
             
-            if(loadingIndicator) loadingIndicator.classList.remove('hidden'); // Yükleme göstergesini göster
+            if(loadingIndicator) loadingIndicator.classList.remove('hidden');
 
-            // Listeleri dinle
-            if (unsubscribeLists) unsubscribeLists(); // Önceki dinleyiciyi kaldır
+            if (unsubscribeLists) unsubscribeLists();
             listsCollectionRef = collection(db, "artifacts", appId, "users", userId, "lists");
-            const qLists = query(listsCollectionRef, orderBy("order", "asc")); // Listeleri sıralı al
+            const qLists = query(listsCollectionRef, orderBy("order", "asc"));
             unsubscribeLists = onSnapshot(qLists, async (querySnapshot) => {
                 const newLists = [];
                 querySnapshot.forEach((doc) => {
                     newLists.push({ id: doc.id, data: doc.data() });
                 });
-                localListsCache = newLists; // Yerel önbelleği güncelle
+                localListsCache = newLists; 
                 console.log("Lists updated from Firestore:", localListsCache.length);
-                await ensureDefaultListsExist(); // Varsayılan listeleri kontrol et/oluştur
-                renderAppUI(); // UI'ı yeniden render et
+                await ensureDefaultListsExist(); 
+                renderAppUI(); 
                 if(loadingIndicator) loadingIndicator.classList.add('hidden');
             }, (error) => {
                 console.error("Listeleri dinlerken hata:", error);
@@ -1315,16 +1222,12 @@
                 if(loadingIndicator) loadingIndicator.classList.add('hidden');
             });
 
-            // Görevleri dinle
-            if (unsubscribeTodos) unsubscribeTodos(); // Önceki dinleyiciyi kaldır
+            if (unsubscribeTodos) unsubscribeTodos();
             todosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
-            // orderBy("createdAt", "desc") veya "order" kullanılabilir. 
-            // "order" anlık güncellemelerde daha tutarlı olabilir. Şimdilik createdAt kalsın.
             const qTodos = query(todosCollectionRef, orderBy("createdAt", "desc")); 
             unsubscribeTodos = onSnapshot(qTodos, (querySnapshot) => {
                 const newTasks = [];
                 querySnapshot.forEach((doc) => { 
-                    // Çökertme durumunu korumak için önceki önbellekten al
                     const existingTaskData = localTasksCache.find(lt => lt.id === doc.id && lt.data.hasOwnProperty('listId'));
                     newTasks.push({ 
                         id: doc.id, 
@@ -1332,7 +1235,7 @@
                         isCollapsed: existingTaskData ? existingTaskData.isCollapsed : false 
                     }); 
                 });
-                localTasksCache = newTasks; // Yerel görev önbelleğini güncelle
+                localTasksCache = newTasks; 
                 renderAppUI(); 
                 if(loadingIndicator) loadingIndicator.classList.add('hidden');
             }, (error) => {
@@ -1343,11 +1246,11 @@
         }
 
 
-        // --- Kimlik Durumu Değişikliği Dinleyicisi ---
+        // --- Kimlik Durumu Değişikliği ---
         if(authInstance) { 
             onAuthStateChanged(authInstance, async (user) => { 
                 clearAuthError(); 
-                if (user) { // Kullanıcı giriş yapmışsa
+                if (user) { 
                     userId = user.uid;
                     if (user.isAnonymous) {
                         if(authStatusDisplay) authStatusDisplay.textContent = 'Anonim Kullanıcı';
@@ -1356,7 +1259,6 @@
                         if(authStatusDisplay) authStatusDisplay.textContent = `Giriş Yapıldı: ${user.email}`;
                         if(userIdDisplayElement) userIdDisplayElement.textContent = `Kullanıcı ID: ${userId.substring(0,10)}...`;
                     }
-                    // UI elementlerini güncelle
                     if(authStatusDisplay) authStatusDisplay.classList.remove('hidden');
                     if(userIdDisplayElement) userIdDisplayElement.classList.remove('hidden');
                     if(logoutButton) logoutButton.classList.remove('hidden');
@@ -1365,14 +1267,14 @@
                     if(authContainer) authContainer.classList.add('hidden');
                     if(appMainContainer) appMainContainer.classList.remove('hidden'); 
                     
-                    if (db) { // Firestore başlatılmışsa
-                        await checkAndPromptForGeminiApiKey(); // API anahtarını kontrol et
-                        listenToUserSpecificData(); // Verileri dinlemeye başla
+                    if (db) {
+                        await checkAndPromptForGeminiApiKey(); 
+                        listenToUserSpecificData();
                     } else {
                          console.error("DB (Firestore) is not initialized!");
                          showAppErrorModal("Veritabanı bağlantısı kurulamadı.");
                     }
-                } else { // Kullanıcı çıkış yapmışsa veya hiç giriş yapmamışsa
+                } else { 
                     userId = null;
                     activeListId = null; 
                     defaultListTodayId = null;
@@ -1381,32 +1283,29 @@
                     localTasksCache = []; 
                     userProvidedGeminiApiKey = null; 
 
-                    // UI elementlerini sıfırla
                     if(authStatusDisplay) authStatusDisplay.textContent = 'Oturum Kapalı';
                     if(authStatusDisplay) authStatusDisplay.classList.add('hidden'); 
                     if(userIdDisplayElement) userIdDisplayElement.classList.add('hidden');
                     if(logoutButton) logoutButton.classList.add('hidden');
                     if(manageApiKeyButton) manageApiKeyButton.classList.add('hidden'); 
 
-                    if (unsubscribeTodos) unsubscribeTodos(); // Dinleyicileri kaldır
+                    if (unsubscribeTodos) unsubscribeTodos();
                     if (unsubscribeLists) unsubscribeLists();
                     
-                    renderAppUI(); // UI'ı auth ekranına döndür
+                    renderAppUI(); 
                     
                     if(authContainer) authContainer.classList.remove('hidden');
                     if(appMainContainer) appMainContainer.classList.add('hidden'); 
                     
-                    if(loginForm) loginForm.reset(); // Formları temizle
+                    if(loginForm) loginForm.reset(); 
                     if(signupForm) signupForm.reset();
 
-                    // Ortam tarafından sağlanan özel token ile giriş denemesi (Canvas ortamı için)
                     if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                         console.log("Özel token ile giriş deneniyor (onAuthStateChanged)...");
                         try {
                             if(authInstance) await signInWithCustomToken(authInstance, __initial_auth_token);
                         } catch (error) {
                             console.error("Özel token ile giriş hatası (onAuthStateChanged):", error);
-                            // Başarısız olursa anonim giriş yapmayı deneyebiliriz.
                         }
                     } else {
                         console.log("Kullanıcı oturumu yok, giriş bekleniyor.");
@@ -1421,32 +1320,14 @@
             if(loadingIndicator) loadingIndicator.classList.add('hidden'); 
         }
         
-        // --- Olay Dinleyicileri (Sayfa Yüklendiğinde) ---
+        // --- Olay Dinleyicileri ---
         window.addEventListener('load', () => {
-            // Auth formları arası geçiş
-            if(switchToSignup) {
-                switchToSignup.addEventListener('click', (e) => { 
-                    e.preventDefault(); 
-                    if(loginForm) loginForm.classList.add('hidden'); 
-                    if(signupForm) signupForm.classList.remove('hidden'); 
-                    clearAuthError(); 
-                });
-            }
-            if(switchToLogin) {
-                switchToLogin.addEventListener('click', (e) => { 
-                    e.preventDefault(); 
-                    if(signupForm) signupForm.classList.add('hidden'); 
-                    if(loginForm) loginForm.classList.remove('hidden'); 
-                    clearAuthError();
-
-                });
-            }
+            if(switchToSignup) switchToSignup.addEventListener('click', (e) => { e.preventDefault(); if(loginForm) loginForm.classList.add('hidden'); if(signupForm) signupForm.classList.remove('hidden'); clearAuthError(); });
+            if(switchToLogin) switchToLogin.addEventListener('click', (e) => { e.preventDefault(); if(signupForm) signupForm.classList.add('hidden'); if(loginForm) loginForm.classList.remove('hidden'); clearAuthError(); });
             
-            // Form gönderme işlemleri
             if(loginForm) loginForm.addEventListener('submit', handleLogin);
             if(signupForm) signupForm.addEventListener('submit', handleSignup);
             
-            // Buton tıklama işlemleri
             if(logoutButton) logoutButton.addEventListener('click', handleLogout);
             if(googleLoginButton) googleLoginButton.addEventListener('click', handleGoogleLogin);
             
@@ -1455,36 +1336,9 @@
                     console.log('Add List Button - click listener fired.');
                     event.preventDefault(); 
                     handleAddNewList(); 
-                }); // addListButton kapanış parantezi
-            } // addListButton if bloğu kapanışı
-
-            if(hamburgerButton) {
-                hamburgerButton.addEventListener('click', () => {
-                    if(listsPanel) {
-                        listsPanel.classList.remove('-translate-x-full');
-                        listsPanel.style.zIndex = '1050';
-                    }
-                    if(sidebarOverlay) {
-                        sidebarOverlay.classList.remove('hidden');
-                        sidebarOverlay.style.zIndex = '1040';
-                    }
-                    document.body.style.overflow = 'hidden';
-                });
-            }
-            if(sidebarOverlay) {
-                sidebarOverlay.addEventListener('click', () => {
-                    console.log("Overlay clicked");
-                    if(listsPanel) {
-                        listsPanel.classList.add('-translate-x-full');
-                    }
-                    if(sidebarOverlay) {
-                        sidebarOverlay.classList.add('hidden');
-                    }
-                    document.body.style.overflow = '';
                 });
             }
             
-            // Enter tuşu ile liste ekleme
             if(newListInput) {
                 newListInput.addEventListener('keypress', (e) => { 
                     if (e.key === 'Enter') {
@@ -1497,7 +1351,6 @@
                 });
             }
             
-            // Görev ekleme
             if(addTaskButton) {
                 addTaskButton.addEventListener('click', addTaskFromInput);
             }
@@ -1511,7 +1364,6 @@
                 });
             }
 
-            // Gemini API Modalı butonları
             if(saveGeminiApiKeyButton) {
                 saveGeminiApiKeyButton.addEventListener('click', saveUserGeminiApiKey);
             }
@@ -1523,26 +1375,11 @@
             if(manageApiKeyButton) {
                 manageApiKeyButton.addEventListener('click', () => {
                      if(geminiApiKeyModal) geminiApiKeyModal.classList.remove('hidden');
-                     if(geminiApiKeyInput && userProvidedGeminiApiKey) {
-                        geminiApiKeyInput.value = userProvidedGeminiApiKey;
-                     } else if (geminiApiKeyInput) {
-                        geminiApiKeyInput.value = ''; 
-                     }
+                     if(geminiApiKeyInput && userProvidedGeminiApiKey) geminiApiKeyInput.value = userProvidedGeminiApiKey;
+                     else if (geminiApiKeyInput) geminiApiKeyInput.value = ''; // Kayıtlı key yoksa input'u boşalt
                 });
             }
-
-            // Kebab menüleri dışına tıklandığında kapatma (genel)
-            document.addEventListener('click', (e) => {
-                const openKebabDropdowns = document.querySelectorAll('.kebab-dropdown:not(.hidden)');
-                openKebabDropdowns.forEach(dropdown => {
-                    const container = dropdown.closest('.kebab-menu-container');
-                    if (container && !container.contains(e.target)) {
-                        dropdown.classList.add('hidden');
-                    }
-                });
-            });
-
-        }); // window.addEventListener('load') kapanışı
+        });
 
     </script>
     <style>
@@ -1553,64 +1390,18 @@
         ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .animate-spin-slow { animation: spin 1.5s linear infinite; }
-        /* Liste düzenleme modundayken bazı elemanları gizle */
          .list-item.editing-list .list-name-span, 
         .list-item.editing-list .edit-list-btn,
         .list-item.editing-list .delete-list-btn {
             display: none;
-        } /* Bu süslü parantez önceki hatada eksikti, eklendi */
-        /* Kebab Menü Stilleri */
-        .kebab-menu-container { position: relative; }
-        .kebab-dropdown {
-            position: absolute;
-            right: 0;
-            top: 100%; /* Butonun hemen altında */
-            margin-top: 8px; /* Butonla arasında küçük bir boşluk */
-            z-index: 10; /* Diğer elemanların üzerinde */
-            border-radius: 0.5rem; /* Yuvarlak köşeler */
-            background-color: white;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Gölge */
-            border: 1px solid #e5e7eb; /* Kenarlık */
-            width: 180px; /* Menü genişliği */
-            overflow: hidden; /* Butonlar taşarsa gizle (güvenlik) */
-        }
-        #listsPanel.transform.-translate-x-full {
-            pointer-events: none;
-            opacity: 0;
-        }
-        #listsPanel {
-            pointer-events: auto;
-            opacity: 1;
-            transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
-        }
-        .kebab-dropdown button {
-            display: flex;
-            align-items: center; /* İkon ve metni hizala */
-            width: 100%;
-            padding: 8px 12px;
-            font-size: 0.875rem; /* 14px */
-            color: #374151; /* text-gray-700 */
-            text-align: left;
-        }
-        .kebab-dropdown button:hover {
-            background-color: #f3f4f6; /* bg-gray-100 */
         }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center p-2 sm:p-4 bg-gradient-to-tr from-slate-300 via-gray-300 to-stone-400">
 
-    <!-- Mobil menü açıldığında arkaplanı kaplayan overlay -->
-    <div id="sidebarOverlay" class="fixed inset-0 bg-black bg-opacity-75 hidden md:hidden"></div>
-
-    <!-- Ana Uygulama Konteyneri (Giriş yapıldıktan sonra görünür) -->
     <div id="appMainContainer" class="bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl p-4 md:p-6 lg:p-8 w-full max-w-3xl lg:max-w-4xl flex flex-col md:flex-row gap-6 hidden">
-        
-        <!-- Sol Panel: Listeler ve Auth Bilgileri -->
-        <aside id="listsPanel" class="w-80 md:w-1/3 lg:w-1/4 space-y-6 flex flex-col 
-                                     fixed top-0 left-0 h-full bg-white/95 backdrop-blur-xl p-4 
-                                     transform -translate-x-full md:relative md:translate-x-0 
-                                     md:bg-transparent md:backdrop-blur-none 
-                                     md:border-r md:pr-6 md:p-0">
+        <!-- Sol Panel: Listeler ve Auth (Auth içinde olacak) -->
+        <aside id="listsPanel" class="w-full md:w-1/3 lg:w-1/4 md:border-r md:pr-6 space-y-6 flex flex-col">
             <header class="text-center md:text-left">
                 <h1 class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-700 via-gray-600 to-stone-700">
                     Yapılacaklar Listesi
@@ -1623,34 +1414,28 @@
                  <button id="manageApiKeyButton" class="mt-2 hidden text-xs text-blue-600 hover:text-blue-800 underline">Gemini API Anahtarını Yönet</button>
             </header>
             
+            <!-- Listeler Bölümü -->
             <div class="flex-grow">
                 <h3 class="text-md font-semibold text-gray-500 mb-2">LİSTELERİM</h3>
                 <div id="listsContainer" class="space-y-1 max-h-48 md:max-h-64 overflow-y-auto mb-3 pr-1">
-                    <!-- Listeler JavaScript ile buraya render edilecek -->
+                    <!-- Listeler buraya render edilecek -->
                 </div>
                 <p id="globalNoListsMessage" class="text-gray-400 text-sm text-center py-3 hidden">Liste oluşturarak başlayın.</p>
-                <div class="mt-3 space-y-2">
-                    <div>
-                        <label for="newListInput" class="sr-only">Yeni liste adı</label>
-                        <input type="text" id="newListInput" placeholder="Yeni liste adı..." class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
-                    </div>
-                     <button id="addListButton" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-slate-600 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500">
-                         Liste Ekle
-                     </button>
+                <div class="flex items-center space-x-2 mt-2">
+                    <input type="text" id="newListInput" placeholder="Yeni liste adı..." class="flex-grow px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500">
+                    <button id="addListButton" class="relative z-10 bg-slate-500 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-md whitespace-nowrap flex-shrink-0">Liste Ekle</button>
                 </div>
             </div>
         </aside>
 
         <!-- Sağ Panel: Aktif Liste ve Görevler -->
         <main id="tasksPanel" class="w-full md:w-2/3 lg:w-3/4"> 
-             <div id="taskInputArea" class="mb-4 flex flex-col sm:flex-row gap-2">
+             <div id="taskInputArea" class="mb-4 flex items-stretch space-x-2">
                 <input type="text" id="taskInput" placeholder="Yeni görev ekle..." class="flex-grow p-3 border border-gray-300 rounded-xl shadow-inner focus:ring-3 focus:ring-cyan-400 focus:border-cyan-400 text-sm">
-                <div class="flex gap-2"> <!-- Select ve Buton mobil'de yan yana kalsın diye -->
-                    <select id="listSelectorForNewTask" class="flex-grow p-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm bg-white appearance-none"></select>
-                    <button id="addTaskButton" class="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold py-3 px-4 rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
+                <select id="listSelectorForNewTask" class="p-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm bg-white appearance-none"></select>
+                <button id="addTaskButton" class="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold py-3 px-4 rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
                     Ekle
-                    </button>
-                </div>
+                </button>
             </div>
 
             <div id="loadingIndicator" class="hidden flex justify-center items-center my-5">
@@ -1659,27 +1444,18 @@
             </div>
             
             <div id="mainContentArea" class="space-y-4 max-h-[65vh] overflow-y-auto p-1">
-                <!-- Başlık ve Mobil Menü Butonu -->
-                <div class="flex items-center mb-2 md:mb-3">
-                    <button id="hamburgerButton" class="p-2 mr-2 rounded-md hover:bg-gray-200 md:hidden">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
-                        </svg>
-                    </button>
-                    <h2 id="activeListNameHeader" class="text-2xl font-semibold pb-1 border-b-2">
+                <section id="activeListContent">
+                    <h2 id="activeListNameHeader" class="text-2xl font-semibold mb-3 pb-1 border-b-2">
                         Liste Yükleniyor...
                     </h2>
-                </div>
-                <ul id="activeTaskList" class="space-y-1">
-                    <!-- Görevler JavaScript ile buraya render edilecek -->
-                </ul>
-                <p id="noTasksInListMessage" class="text-gray-500 text-center py-4 hidden"></p>
+                    <ul id="activeTaskList" class="space-y-1"></ul>
+                    <p id="noTasksInListMessage" class="text-gray-500 text-center py-4 hidden"></p>
+                </section>
             </div>
         </main>
-
-    </div> <!-- appMainContainer kapanışı -->
+    </div>
     
-    <!-- Kimlik Doğrulama Konteyneri (Başlangıçta görünür) -->
+    <!-- Auth Container (Uygulama dışında, başlangıçta bu görünecek) -->
     <div id="authContainer" class="bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl p-4 md:p-6 lg:p-8 w-full max-w-md mx-auto">
         <header class="mb-6 text-center">
              <h1 class="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-700 via-gray-600 to-stone-700">
@@ -1687,7 +1463,6 @@
             </h1>
         </header>
         <div id="authErrorMessages" class="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm hidden"></div>
-        <!-- Giriş Formu -->
         <form id="loginForm" class="space-y-3">
             <h2 class="text-lg font-semibold text-gray-700">Giriş Yap</h2>
             <div>
@@ -1699,6 +1474,7 @@
                 <input type="password" id="loginPassword" placeholder="Şifre" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
             </div>
             <button id="loginButton" type="submit" class="w-full flex justify-center py-2 px-4 rounded-md shadow-sm text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700">Giriş Yap</button>
+            <!-- Google ile Giriş Butonu -->
             <button type="button" id="googleLoginButton" class="mt-2 w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
                  <svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.223,0-9.657-3.356-11.303-8H6.306C9.656,39.663,16.318,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l0.001-0.001l6.19,5.238C39.903,38.635,44,31.886,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>
                 Google ile Giriş Yap
@@ -1707,7 +1483,6 @@
                 Hesabınız yok mu? <a href="#" id="switchToSignup" class="font-medium text-cyan-600 hover:text-cyan-500">Kaydolun</a>
             </p>
         </form>
-        <!-- Kayıt Formu -->
         <form id="signupForm" class="space-y-3 hidden">
             <h2 class="text-lg font-semibold text-gray-700">Kaydol</h2>
             <div>
@@ -1748,7 +1523,7 @@
         </div>
     </div>
 
-    <!-- Genel Hata Modalı -->
+    <!-- Hata Modalı (App için) -->
     <div id="errorModal" class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
         <div class="relative mx-auto p-5 border-2 border-red-300 w-full max-w-md shadow-2xl rounded-xl bg-white">
             <div class="mt-2 text-center">
