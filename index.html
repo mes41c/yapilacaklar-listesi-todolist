@@ -16,8 +16,8 @@
             signInWithEmailAndPassword,
             signOut as firebaseSignOut,
             signInWithCustomToken,
-            GoogleAuthProvider, // Google Auth Provider import edildi
-            signInWithPopup     // signInWithPopup import edildi
+            GoogleAuthProvider, 
+            signInWithPopup     
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, 
@@ -33,10 +33,11 @@
             writeBatch, 
             getDocs, 
             where,
-            limit 
+            limit,
+            setDoc,
+            getDoc 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase yapılandırması 
         const firebaseConfig = {
           apiKey: "AIzaSyCCML1QJZWGQbIHFtr7iohPzT11E5RBONo", 
           authDomain: "yapilacaklarlistesi-aa004.firebaseapp.com",
@@ -47,7 +48,7 @@
         };
 
         // Uygulama Kimliği
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'todo-app-rebuild-google-auth';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'todo-app-rebuild-final-v2';
 
         const app = initializeApp(firebaseConfig);
         console.log("Firebase App Initialized:", app.name); 
@@ -81,6 +82,7 @@
         let activeListId = null;
         let defaultListTodayId = null;
         let defaultListLaterId = null;
+        let userProvidedGeminiApiKey = null; 
 
         // --- UI Elementleri ---
         const authContainer = document.getElementById('authContainer');
@@ -95,7 +97,7 @@
         const signupPasswordInput = document.getElementById('signupPassword');
         const loginButton = document.getElementById('loginButton');
         const signupButton = document.getElementById('signupButton');
-        const googleLoginButton = document.getElementById('googleLoginButton'); // Google giriş butonu
+        const googleLoginButton = document.getElementById('googleLoginButton'); 
         const switchToSignup = document.getElementById('switchToSignup');
         const switchToLogin = document.getElementById('switchToLogin');
         const logoutButton = document.getElementById('logoutButton');
@@ -116,9 +118,16 @@
         const errorModal = document.getElementById('errorModal');
         const errorMessage = document.getElementById('errorMessage');
         const closeErrorModalButton = document.getElementById('closeErrorModalButton');
+        
         const geminiLoadingModal = document.getElementById('geminiLoadingModal');
         const geminiLoadingModalTitle = document.getElementById('geminiLoadingModalTitle');
         const geminiLoadingModalDescription = document.getElementById('geminiLoadingModalDescription');
+
+        const geminiApiKeyModal = document.getElementById('geminiApiKeyModal');
+        const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
+        const saveGeminiApiKeyButton = document.getElementById('saveGeminiApiKeyButton');
+        const closeGeminiApiKeyModalButton = document.getElementById('closeGeminiApiKeyModalButton');
+        const manageApiKeyButton = document.getElementById('manageApiKeyButton'); 
 
         function showAppErrorModal(message) {
             if(errorMessage) errorMessage.textContent = message;
@@ -139,7 +148,152 @@
             }
         }
         
-        // --- Kimlik Doğrulama Fonksiyonları ---
+        // --- Gemini API Anahtarı Yönetimi ---
+        async function loadUserGeminiApiKey() {
+            if (!userId || !db) return null;
+            const apiKeyDocRef = doc(db, "artifacts", appId, "users", userId, "settings", "apiKeys");
+            try {
+                const docSnap = await getDoc(apiKeyDocRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data && data.gemini && data.gemini.trim() !== "") {
+                        console.log("Kullanıcının kayıtlı Gemini API anahtarı bulundu.");
+                        userProvidedGeminiApiKey = data.gemini; 
+                        return data.gemini;
+                    }
+                }
+                console.log("Kullanıcı için kayıtlı Gemini API anahtarı bulunamadı veya boş.");
+                userProvidedGeminiApiKey = null; // Anahtar yoksa veya boşsa null yap
+                return null;
+            } catch (error) {
+                console.error("Gemini API anahtarı okunurken hata:", error);
+                showAppErrorModal("API anahtarı okunurken bir sorun oluştu.");
+                userProvidedGeminiApiKey = null;
+                return null;
+            }
+        }
+
+        async function saveUserGeminiApiKey() {
+            if (!userId || !db || !geminiApiKeyInput) return;
+            const apiKeyToSave = geminiApiKeyInput.value.trim();
+            if (!apiKeyToSave) {
+                showAppErrorModal("API anahtarı boş olamaz.");
+                // geminiApiKeyInput'a focus yap ve belki bir border rengi ile uyar.
+                geminiApiKeyInput.focus();
+                geminiApiKeyInput.classList.add('border-red-500');
+                return;
+            }
+            geminiApiKeyInput.classList.remove('border-red-500'); // Başarılıysa veya doluysa border'ı kaldır
+            
+            saveGeminiApiKeyButton.disabled = true;
+            saveGeminiApiKeyButton.textContent = "Kaydediliyor...";
+
+            const apiKeyDocRef = doc(db, "artifacts", appId, "users", userId, "settings", "apiKeys");
+            try {
+                await setDoc(apiKeyDocRef, { gemini: apiKeyToSave }, { merge: true }); 
+                userProvidedGeminiApiKey = apiKeyToSave; 
+                console.log("Gemini API anahtarı başarıyla kaydedildi.");
+                if(geminiApiKeyModal) geminiApiKeyModal.classList.add('hidden');
+            } catch (error) {
+                console.error("Gemini API anahtarı kaydedilirken hata:", error);
+                showAppErrorModal("API anahtarı kaydedilirken bir sorun oluştu.");
+            } finally {
+                saveGeminiApiKeyButton.disabled = false;
+                saveGeminiApiKeyButton.textContent = "Kaydet";
+            }
+        }
+
+        async function checkAndPromptForGeminiApiKey() {
+            if (userProvidedGeminiApiKey) {
+                console.log("Gemini API anahtarı zaten mevcut (global).");
+                if(geminiApiKeyModal) geminiApiKeyModal.classList.add('hidden');
+                return true;
+            }
+            const storedKey = await loadUserGeminiApiKey(); // Firestore'dan yükle
+            if (storedKey) {
+                // userProvidedGeminiApiKey zaten loadUserGeminiApiKey içinde set ediliyor.
+                if(geminiApiKeyModal) geminiApiKeyModal.classList.add('hidden');
+                return true;
+            } else {
+                console.log("Gemini API anahtarı isteniyor...");
+                if(geminiApiKeyModal) {
+                    geminiApiKeyInput.value = ''; // Input'u temizle
+                    geminiApiKeyModal.classList.remove('hidden');
+                }
+                return false;
+            }
+        }
+
+        async function callGeminiAPI(prompt, loadingTitle = "✨ Gemini düşünüyor...", loadingDescription = "İşleniyor...") {
+            if (!userProvidedGeminiApiKey) {
+                const hasKey = await checkAndPromptForGeminiApiKey();
+                if (!hasKey) {
+                    showAppErrorModal("Gemini özelliklerini kullanmak için API anahtarınızı girmeniz gerekiyor. Sol panelden 'Gemini API Anahtarını Yönet' butonuna tıklayarak anahtarınızı ekleyebilirsiniz.");
+                    return null; 
+                }
+                 // checkAndPromptForGeminiApiKey içindeki loadUserGeminiApiKey, userProvidedGeminiApiKey'yi güncellemeli.
+                 // Eğer kullanıcı modalı kapatırsa anahtar hala null olabilir.
+                 if (!userProvidedGeminiApiKey) {
+                     console.warn("Gemini API anahtarı girilmedi veya modal kapatıldı.");
+                     return null;
+                 }
+            }
+            
+            const apiKey = userProvidedGeminiApiKey; 
+
+            if (!apiKey || apiKey.trim() === "") { // Bu kontrol ek güvenlik için, ama checkAndPrompt halletmeli.
+                 showAppErrorModal("Geçerli bir Gemini API anahtarı bulunamadı. Lütfen ayarlarınızı kontrol edin.");
+                 console.error("callGeminiAPI: apiKey boş veya tanımsız.");
+                 return null;
+            }
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            
+            if(geminiLoadingModal) {
+                if(geminiLoadingModalTitle) geminiLoadingModalTitle.textContent = loadingTitle;
+                if(geminiLoadingModalDescription) geminiLoadingModalDescription.textContent = loadingDescription;
+                geminiLoadingModal.classList.remove('hidden');
+            }
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error("Gemini API Yanıt Hatası Detayları:", errorData);
+                     let userFriendlyMessage = `Gemini API hatası: ${errorData.error?.message || response.statusText}`;
+                    if (response.status === 400 && errorData.error?.message.toLowerCase().includes("api key not valid")) {
+                        userFriendlyMessage = "Girdiğiniz Gemini API anahtarı geçersiz. Lütfen kontrol edin.";
+                        userProvidedGeminiApiKey = null; 
+                        checkAndPromptForGeminiApiKey(); 
+                    } else if (response.status === 403) {
+                         userFriendlyMessage = "Gemini API isteği yasaklandı. API anahtarınızın doğru yetkilere sahip olduğundan veya faturalandırmanın etkin olduğundan emin olun.";
+                    } else if (response.status === 429) {
+                        userFriendlyMessage = "Gemini API kullanım kotası aşıldı. Lütfen daha sonra tekrar deneyin veya kotanızı kontrol edin.";
+                    }
+                    throw new Error(userFriendlyMessage);
+                }
+                const result = await response.json();
+                if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    return result.candidates[0].content.parts[0].text;
+                } else {
+                    console.error("Gemini API Beklenmedik Yanıt Yapısı:", result);
+                    throw new Error("Gemini API'den geçerli bir yanıt alınamadı.");
+                }
+            } catch (error) {
+                console.error("callGeminiAPI içinde hata yakalandı:", error);
+                showAppErrorModal(`${error.message}`); 
+                return null;
+            } finally {
+                if(geminiLoadingModal) geminiLoadingModal.classList.add('hidden');
+            }
+        }
+        
+        // --- Diğer Tüm Fonksiyonlar (handleSignup, handleLogin, vb.) ---
+        // ... (KODUN GERİ KALANI ÖNCEKİ YANITTAKİ GİBİ) ...
         async function handleSignup(e) {
             e.preventDefault();
             if (!authInstance) { showAuthError("Kimlik doğrulama servisi hazır değil."); return; } 
@@ -199,29 +353,39 @@
                 loginButton.textContent = "Giriş Yap";
             }
         }
-
-        async function handleGoogleLogin() {
-            if (!authInstance) { showAuthError("Kimlik doğrulama servisi hazır değil."); return; }
+         async function handleGoogleLogin() {
+            if (!authInstance) {
+                showAuthError("Kimlik doğrulama servisi hazır değil.");
+                console.error("Auth instance not available in handleGoogleLogin");
+                return;
+            }
             clearAuthError();
             const provider = new GoogleAuthProvider();
-            googleLoginButton.disabled = true;
-            googleLoginButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Google ile Giriş Yapılıyor...`;
+            const googleLoginBtnInstance = document.getElementById('googleLoginButton');
+            if(googleLoginBtnInstance) {
+                googleLoginBtnInstance.disabled = true;
+                googleLoginBtnInstance.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Google ile Giriş Yapılıyor...`;
+            }
             try {
+                console.log("Attempting Google Sign-In...");
                 await signInWithPopup(authInstance, provider);
-                // onAuthStateChanged tetiklenecek ve UI güncellenecek
+                console.log("Google Sign-In successful (or popup closed). onAuthStateChanged will handle the rest.");
             } catch (error) {
                 console.error("Google login error:", error.code, error.message);
                 if (error.code === 'auth/popup-closed-by-user') {
                     showAuthError("Giriş penceresi kapatıldı.");
                 } else if (error.code === 'auth/account-exists-with-different-credential') {
                      showAuthError("Bu e-posta ile farklı bir yöntemle daha önce giriş yapılmış. Lütfen o yöntemle giriş yapın.");
-                }
-                else {
+                } else if (error.code === 'auth/unauthorized-domain') {
+                    showAuthError("Bu domainden Google ile giriş yapmaya izin verilmiyor. Firebase projenizin yetkili domainlerini kontrol edin.");
+                } else {
                     showAuthError(`Google ile giriş hatası: ${error.message}`);
                 }
             } finally {
-                googleLoginButton.disabled = false;
-                googleLoginButton.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.223,0-9.657-3.356-11.303-8H6.306C9.656,39.663,16.318,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l0.001-0.001l6.19,5.238C39.903,38.635,44,31.886,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>Google ile Giriş Yap`;
+                if(googleLoginBtnInstance){
+                    googleLoginBtnInstance.disabled = false;
+                    googleLoginBtnInstance.innerHTML = `<svg class="w-5 h-5 mr-2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48px" height="48px"><path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/><path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/><path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.223,0-9.657-3.356-11.303-8H6.306C9.656,39.663,16.318,44,24,44z"/><path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571l0.001-0.001l6.19,5.238C39.903,38.635,44,31.886,44,24C44,22.659,43.862,21.35,43.611,20.083z"/></svg>Google ile Giriş Yap`;
+                }
             }
         }
 
@@ -239,14 +403,6 @@
             }
         }
         
-        // --- Liste Yönetimi Fonksiyonları ve Diğerleri ---
-        // (ensureDefaultListsExist, handleAddNewList, updateListName, deleteUserList, 
-        // addTaskToFirestore, callGeminiAPI, getNextOrderValue, breakDownTaskIntoSubtasks, 
-        // elaborateTask, addTaskFromInput, toggleTaskCompleted, deleteTask, updateTaskText, 
-        // moveTask, promoteTaskToMain, renderListsUI, renderTaskNode, renderAppUI, 
-        // listenToUserSpecificData)
-        // Bu fonksiyonlar bir önceki yanıttaki gibi kalacak.
-        // Sadece en alttaki onAuthStateChanged ve window.onload içindeki event listener'lar güncellenecek.
         async function ensureDefaultListsExist() {
             if (!userId || !db) return;
             const userListsCollectionRef = collection(db, "artifacts", appId, "users", userId, "lists");
@@ -1106,11 +1262,13 @@
                     if(authStatusDisplay) authStatusDisplay.classList.remove('hidden');
                     if(userIdDisplayElement) userIdDisplayElement.classList.remove('hidden');
                     if(logoutButton) logoutButton.classList.remove('hidden');
+                    if(manageApiKeyButton) manageApiKeyButton.classList.remove('hidden'); 
                     
                     if(authContainer) authContainer.classList.add('hidden');
                     if(appMainContainer) appMainContainer.classList.remove('hidden'); 
                     
                     if (db) {
+                        await checkAndPromptForGeminiApiKey(); 
                         listenToUserSpecificData();
                     } else {
                          console.error("DB (Firestore) is not initialized!");
@@ -1123,11 +1281,13 @@
                     defaultListLaterId = null;
                     localListsCache = []; 
                     localTasksCache = []; 
+                    userProvidedGeminiApiKey = null; 
 
                     if(authStatusDisplay) authStatusDisplay.textContent = 'Oturum Kapalı';
                     if(authStatusDisplay) authStatusDisplay.classList.add('hidden'); 
                     if(userIdDisplayElement) userIdDisplayElement.classList.add('hidden');
                     if(logoutButton) logoutButton.classList.add('hidden');
+                    if(manageApiKeyButton) manageApiKeyButton.classList.add('hidden'); 
 
                     if (unsubscribeTodos) unsubscribeTodos();
                     if (unsubscribeLists) unsubscribeLists();
@@ -1161,47 +1321,65 @@
         }
         
         // --- Olay Dinleyicileri ---
-        if(switchToSignup) switchToSignup.addEventListener('click', (e) => { e.preventDefault(); if(loginForm) loginForm.classList.add('hidden'); if(signupForm) signupForm.classList.remove('hidden'); clearAuthError(); });
-        if(switchToLogin) switchToLogin.addEventListener('click', (e) => { e.preventDefault(); if(signupForm) signupForm.classList.add('hidden'); if(loginForm) loginForm.classList.remove('hidden'); clearAuthError(); });
-        
-        if(loginForm) loginForm.addEventListener('submit', handleLogin);
-        if(signupForm) signupForm.addEventListener('submit', handleSignup);
-        
-        if(logoutButton) logoutButton.addEventListener('click', handleLogout);
-        if(googleLoginButton) googleLoginButton.addEventListener('click', handleGoogleLogin); // Google giriş butonu için olay dinleyici
-        
-        if(addListButton) {
-            addListButton.addEventListener('click', function(event) { 
-                console.log('Add List Button - click listener fired.');
-                event.preventDefault(); 
-                handleAddNewList(); 
-            });
-        }
-        
-        if(newListInput) {
-            newListInput.addEventListener('keypress', (e) => { 
-                if (e.key === 'Enter') {
-                    if (document.activeElement === newListInput) { 
-                         console.log('New List Input - Enter keypress listener fired.'); 
-                         e.preventDefault(); 
-                         handleAddNewList();
+        window.addEventListener('load', () => {
+            if(switchToSignup) switchToSignup.addEventListener('click', (e) => { e.preventDefault(); if(loginForm) loginForm.classList.add('hidden'); if(signupForm) signupForm.classList.remove('hidden'); clearAuthError(); });
+            if(switchToLogin) switchToLogin.addEventListener('click', (e) => { e.preventDefault(); if(signupForm) signupForm.classList.add('hidden'); if(loginForm) loginForm.classList.remove('hidden'); clearAuthError(); });
+            
+            if(loginForm) loginForm.addEventListener('submit', handleLogin);
+            if(signupForm) signupForm.addEventListener('submit', handleSignup);
+            
+            if(logoutButton) logoutButton.addEventListener('click', handleLogout);
+            if(googleLoginButton) googleLoginButton.addEventListener('click', handleGoogleLogin);
+            
+            if(addListButton) {
+                addListButton.addEventListener('click', function(event) { 
+                    console.log('Add List Button - click listener fired.');
+                    event.preventDefault(); 
+                    handleAddNewList(); 
+                });
+            }
+            
+            if(newListInput) {
+                newListInput.addEventListener('keypress', (e) => { 
+                    if (e.key === 'Enter') {
+                        if (document.activeElement === newListInput) { 
+                             console.log('New List Input - Enter keypress listener fired.'); 
+                             e.preventDefault(); 
+                             handleAddNewList();
+                        }
                     }
-                }
-            });
-        }
-        
-        if(addTaskButton) {
-            addTaskButton.addEventListener('click', addTaskFromInput);
-        }
-        if(taskInput) {
-            taskInput.addEventListener('keypress', (event) => { 
-                if (event.key === 'Enter') {
-                    if (document.activeElement === taskInput) { 
-                        addTaskFromInput();
+                });
+            }
+            
+            if(addTaskButton) {
+                addTaskButton.addEventListener('click', addTaskFromInput);
+            }
+            if(taskInput) {
+                taskInput.addEventListener('keypress', (event) => { 
+                    if (event.key === 'Enter') {
+                        if (document.activeElement === taskInput) { 
+                            addTaskFromInput();
+                        }
                     }
-                }
-            });
-        }
+                });
+            }
+
+            if(saveGeminiApiKeyButton) {
+                saveGeminiApiKeyButton.addEventListener('click', saveUserGeminiApiKey);
+            }
+            if(closeGeminiApiKeyModalButton) {
+                closeGeminiApiKeyModalButton.addEventListener('click', () => {
+                    if(geminiApiKeyModal) geminiApiKeyModal.classList.add('hidden');
+                });
+            }
+            if(manageApiKeyButton) {
+                manageApiKeyButton.addEventListener('click', () => {
+                     if(geminiApiKeyModal) geminiApiKeyModal.classList.remove('hidden');
+                     if(geminiApiKeyInput && userProvidedGeminiApiKey) geminiApiKeyInput.value = userProvidedGeminiApiKey;
+                     else if (geminiApiKeyInput) geminiApiKeyInput.value = ''; // Kayıtlı key yoksa input'u boşalt
+                });
+            }
+        });
 
     </script>
     <style>
@@ -1233,6 +1411,7 @@
                     <span id="userIdDisplay" class="ml-1 text-gray-500 hidden tracking-tight"></span>
                     <button id="logoutButton" class="ml-2 hidden text-red-500 hover:text-red-700 font-semibold text-xs underline">Çıkış Yap</button>
                 </div>
+                 <button id="manageApiKeyButton" class="mt-2 hidden text-xs text-blue-600 hover:text-blue-800 underline">Gemini API Anahtarını Yönet</button>
             </header>
             
             <!-- Listeler Bölümü -->
@@ -1242,9 +1421,9 @@
                     <!-- Listeler buraya render edilecek -->
                 </div>
                 <p id="globalNoListsMessage" class="text-gray-400 text-sm text-center py-3 hidden">Liste oluşturarak başlayın.</p>
-                <div class="flex space-x-2 mt-2">
+                <div class="flex items-center space-x-2 mt-2"> {/* items-center eklendi */}
                     <input type="text" id="newListInput" placeholder="Yeni liste adı..." class="flex-grow px-2 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500">
-                    <button id="addListButton" class="bg-slate-500 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-md whitespace-nowrap flex-shrink-0">Liste Ekle</button>
+                    <button id="addListButton" class="relative z-10 bg-slate-500 hover:bg-slate-600 text-white text-sm px-4 py-2 rounded-md whitespace-nowrap flex-shrink-0">Liste Ekle</button>
                 </div>
             </div>
         </aside>
@@ -1253,9 +1432,7 @@
         <main id="tasksPanel" class="w-full md:w-2/3 lg:w-3/4"> 
              <div id="taskInputArea" class="mb-4 flex items-stretch space-x-2">
                 <input type="text" id="taskInput" placeholder="Yeni görev ekle..." class="flex-grow p-3 border border-gray-300 rounded-xl shadow-inner focus:ring-3 focus:ring-cyan-400 focus:border-cyan-400 text-sm">
-                <select id="listSelectorForNewTask" class="p-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm bg-white appearance-none">
-                    <!-- Listeler buraya dinamik olarak eklenecek -->
-                </select>
+                <select id="listSelectorForNewTask" class="p-3 border border-gray-300 rounded-xl shadow-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm bg-white appearance-none"></select>
                 <button id="addTaskButton" class="bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold py-3 px-4 rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:scale-105">
                     Ekle
                 </button>
@@ -1271,9 +1448,7 @@
                     <h2 id="activeListNameHeader" class="text-2xl font-semibold mb-3 pb-1 border-b-2">
                         Liste Yükleniyor...
                     </h2>
-                    <ul id="activeTaskList" class="space-y-1">
-                        <!-- Aktif liste görevleri buraya eklenecek -->
-                    </ul>
+                    <ul id="activeTaskList" class="space-y-1"></ul>
                     <p id="noTasksInListMessage" class="text-gray-500 text-center py-4 hidden"></p>
                 </section>
             </div>
@@ -1312,7 +1487,7 @@
             <h2 class="text-lg font-semibold text-gray-700">Kaydol</h2>
             <div>
                 <label for="signupEmail" class="sr-only">E-posta</label>
-                <input type="email" id="signupEmail" placeholder="E-posta" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
+                <input type="email" id="signupEmail" placeholder="E-posta" required class="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
             </div>
             <div>
                 <label for="signupPassword" class="sr-only">Şifre</label>
@@ -1325,6 +1500,28 @@
         </form>
     </div>
 
+    <!-- Gemini API Anahtarı Giriş Modalı -->
+    <div id="geminiApiKeyModal" class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+        <div class="relative mx-auto p-6 border w-full max-w-md shadow-lg rounded-xl bg-white">
+            <div class="mt-3 text-center">
+                <h3 class="text-xl leading-6 font-bold text-gray-900">Gemini API Anahtarı Gerekli</h3>
+                <div class="mt-4 px-7 py-3">
+                    <p class="text-sm text-gray-600 mb-3">
+                        "Parçala" ve "Detaylandır" gibi akıllı özellikleri kullanabilmek için lütfen Google AI Studio'dan aldığınız Gemini API anahtarınızı girin.
+                    </p>
+                    <input type="text" id="geminiApiKeyInput" placeholder="Gemini API Anahtarınız" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-cyan-500 focus:border-cyan-500">
+                </div>
+                <div class="items-center px-4 py-3 space-x-2 flex justify-end">
+                    <button id="closeGeminiApiKeyModalButton" class="px-4 py-2 bg-gray-200 text-gray-800 text-sm font-medium rounded-md shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400">
+                        Kapat
+                    </button>
+                    <button id="saveGeminiApiKeyButton" class="px-4 py-2 bg-cyan-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-cyan-700 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                        Kaydet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Hata Modalı (App için) -->
     <div id="errorModal" class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
