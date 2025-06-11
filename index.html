@@ -1018,7 +1018,7 @@
                     3: { text: 'Yüksek', color: 'bg-red-500', titleColor: 'text-red-700' }
                 };
                 const p = priorities[task.priority] || priorities[2];
-                priorityFlag.innerHTML = `<span class="w-3 h-3 rounded-full inline-block mr-1 ${p.color}"></span><span class="text-xs ${p.titleColor}">${p.text}</span>`;
+                priorityFlag.innerHTML = `<span class="w-3 h-3 rounded-full inline-block mr-1 ${p.color}"></span><span class="text-xs ${p.titleColor} dark:text-gray-400">${p.text}</span>`;
                 priorityFlag.title = `Öncelik: ${p.text}`;
                 detailsContainer.appendChild(priorityFlag);
             }
@@ -1030,7 +1030,7 @@
                 const dueDateObj = new Date(task.dueDate + 'T00:00:00'); // Saat farkı sorunlarını önle
                 today.setHours(0, 0, 0, 0);
 
-                let textColor = 'text-gray-500';
+                let textColor = 'text-gray-500 dark:text-gray-400';
                 if (dueDateObj < today) {
                     textColor = 'text-red-600 font-semibold'; // Geçmiş tarih
                 } else if (dueDateObj.getTime() === today.getTime()) {
