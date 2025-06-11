@@ -925,6 +925,7 @@
         
         // GÜNCELLENDİ: Görev render fonksiyonu, tarih ve öncelik bilgilerini gösterecek şekilde güncellendi.
         function renderTaskNode(taskDoc, level, childrenMap, targetElement) {
+            console.log("renderTaskNode çağrıldı - Görev:", taskDoc.data.text);
             const task = taskDoc.data;
             const taskId = taskDoc.id;
             const parentListId = task.listId;
@@ -1150,6 +1151,10 @@
             const childrenMap = new Map();
             const topLevelTasks = [];
             const allTasksInActiveList = localTasksCache.filter(item => item.data && item.data.listId === activeListId);
+            console.log("--- renderAppUI Raporu ---");
+            console.log("Aktif Liste ID:", activeListId);
+            console.log("Filtrelenmiş Görevler:", allTasksInActiveList);
+            console.log("--------------------------");
 
             // 1. FİLTRELEME
             let filteredTasks = allTasksInActiveList.filter(taskDoc => {
