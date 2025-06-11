@@ -1002,7 +1002,7 @@
 
             const taskTextElement = document.createElement('span');
             taskTextElement.textContent = task.text;
-            taskTextElement.className = `task-text text-gray-700 text-sm sm:text-base truncate ${task.completed ? 'line-through text-gray-400' : ''}`;
+            taskTextElement.className = `task-text text-gray-700 dark:text-gray-200 text-sm sm:text-base truncate ${task.completed ? 'line-through text-gray-400' : ''}`;
             mainTaskContent.appendChild(taskTextElement);
             
             // YENİ: Görev detayları (öncelik, tarih) için container
@@ -1329,6 +1329,7 @@
             };
 
             const toggleTheme = () => {
+                console.log("Tema değiştirme butonuna tıklandı!");
                 const isDark = document.documentElement.classList.toggle('dark');
                 localStorage.theme = isDark ? 'dark' : 'light';
                 themeToggle();
