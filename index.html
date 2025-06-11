@@ -1088,8 +1088,8 @@
             deleteButton.addEventListener('click', (e) => { e.stopPropagation(); deleteTask(taskId); });
             taskActions.appendChild(deleteButton);
             topRow.appendChild(taskActions);
-            
-            
+            taskWrapper.appendChild(topRow);
+  
             targetElement.appendChild(listItem);
             
             if (!taskDoc.isCollapsed && children.length > 0) {
