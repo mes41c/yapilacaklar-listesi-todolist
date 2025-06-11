@@ -136,6 +136,14 @@
         const themeToggleButton = document.getElementById('themeToggleButton');
         const themeIconSun = document.getElementById('themeIconSun');
         const themeIconMoon = document.getElementById('themeIconMoon');
+        const editTaskModal = document.getElementById('editTaskModal');
+        const editTaskId = document.getElementById('editTaskId');
+        const editTaskTextInput = document.getElementById('editTaskTextInput');
+        const editTaskDueDateInput = document.getElementById('editTaskDueDateInput');
+        const editTaskPrioritySelect = document.getElementById('editTaskPrioritySelect');
+        const editTaskListSelect = document.getElementById('editTaskListSelect');
+        const closeEditTaskModalButton = document.getElementById('closeEditTaskModalButton');
+        const saveTaskChangesButton = document.getElementById('saveTaskChangesButton');
 
         function showAppErrorModal(message) {
             if(errorMessage) errorMessage.textContent = message;
