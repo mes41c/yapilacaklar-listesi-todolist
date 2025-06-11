@@ -106,7 +106,6 @@
         const taskInput = document.getElementById('taskInput');
         const listSelectorForNewTask = document.getElementById('listSelectorForNewTask');
         const addTaskButton = document.getElementById('addTaskButton');
-        // YENİ: Görev detayları için UI elemanları
         const taskDueDateInput = document.getElementById('taskDueDate');
         const taskPrioritySelect = document.getElementById('taskPriority');
         const listsContainerEl = document.getElementById('listsContainer');
@@ -116,7 +115,6 @@
         const activeTaskList = document.getElementById('activeTaskList');
         const noTasksInListMessage = document.getElementById('noTasksInListMessage');
         const globalNoListsMessage = document.getElementById('globalNoListsMessage');
-        // YENİ: Filtreleme ve sıralama için UI elemanları
         const filterTasksSelect = document.getElementById('filterTasks');
         const sortTasksSelect = document.getElementById('sortTasks');
         const loadingIndicator = document.getElementById('loadingIndicator');
@@ -137,13 +135,13 @@
         const themeIconSun = document.getElementById('themeIconSun');
         const themeIconMoon = document.getElementById('themeIconMoon');
         const editTaskModal = document.getElementById('editTaskModal');
-        const editTaskId = document.getElementById('editTaskId');
-        const editTaskTextInput = document.getElementById('editTaskTextInput');
-        const editTaskDueDateInput = document.getElementById('editTaskDueDateInput');
-        const editTaskPrioritySelect = document.getElementById('editTaskPrioritySelect');
-        const editTaskListSelect = document.getElementById('editTaskListSelect');
-        const closeEditTaskModalButton = document.getElementById('closeEditTaskModalButton');
-        const saveTaskChangesButton = document.getElementById('saveTaskChangesButton');
+        const editTaskId = document.getElementById('editTaskId');
+        const editTaskTextInput = document.getElementById('editTaskTextInput');
+        const editTaskDueDateInput = document.getElementById('editTaskDueDateInput');
+        const editTaskPrioritySelect = document.getElementById('editTaskPrioritySelect');
+        const editTaskListSelect = document.getElementById('editTaskListSelect');
+        const closeEditTaskModalButton = document.getElementById('closeEditTaskModalButton');
+        const saveTaskChangesButton = document.getElementById('saveTaskChangesButton');
 
         function showAppErrorModal(message) {
             if(errorMessage) errorMessage.textContent = message;
@@ -1312,6 +1310,7 @@
 
         // --- Event Listeners ---
         window.addEventListener('load', () => {
+            // Koyu Mod Başlangıç Ayarı
             const themeToggle = () => {
                 if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                     document.documentElement.classList.add('dark');
@@ -1330,31 +1329,31 @@
                 themeToggle();
             };
             
-            if(themeToggleButton) themeToggleButton.addEventListener('click', toggleTheme);
-
             // Sayfa yüklendiğinde temayı ayarla
             themeToggle();
+
+            // Tüm olay dinleyicilerini buraya toplayalım
+            if(themeToggleButton) themeToggleButton.addEventListener('click', toggleTheme);
             if(switchToSignup) switchToSignup.addEventListener('click', (e) => { e.preventDefault(); if(loginForm) loginForm.classList.add('hidden'); if(signupForm) signupForm.classList.remove('hidden'); clearAuthError(); });
             if(switchToLogin) switchToLogin.addEventListener('click', (e) => { e.preventDefault(); if(signupForm) signupForm.classList.add('hidden'); if(loginForm) loginForm.classList.remove('hidden'); clearAuthError(); });
             if(loginForm) loginForm.addEventListener('submit', handleLogin);
             if(signupForm) signupForm.addEventListener('submit', handleSignup);
             if(logoutButton) logoutButton.addEventListener('click', handleLogout);
             if(googleLoginButton) googleLoginButton.addEventListener('click', handleGoogleLogin);
+            
             if(addListButton) {
                 addListButton.addEventListener('click', function(event) {
                     console.log('Add List Button - click listener fired.');
                     event.preventDefault();
                     handleAddNewList();
-                 });
+                    });
             }
             if(newListInput) {
                 newListInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        if (document.activeElement === newListInput) {
-                            console.log('New List Input - Enter keypress listener fired.');
-                            e.preventDefault();
-                            handleAddNewList();
-                        }
+                    if (e.key === 'Enter' && document.activeElement === newListInput) {
+                        console.log('New List Input - Enter keypress listener fired.');
+                        e.preventDefault();
+                        handleAddNewList();
                     }
                 });
             }
@@ -1363,46 +1362,43 @@
             }
             if(taskInput) {
                 taskInput.addEventListener('keypress', (event) => {
-                    if (event.key === 'Enter') {
-                        if (document.activeElement === taskInput) {
-                             addTaskFromInput();
-                        }
+                    if (event.key === 'Enter' && document.activeElement === taskInput) {
+                            addTaskFromInput();
                     }
                 });
             }
 
-            // YENİ: Filtreleme ve sıralama select'leri için olay dinleyicileri
+            // Filtreleme ve sıralama select'leri için olay dinleyicileri
             if(filterTasksSelect) {
                 filterTasksSelect.addEventListener('change', (e) => {
                     currentFilter = e.target.value;
-                    renderAppUI(); // Seçim değiştiğinde UI'ı yeniden render et
+                    renderAppUI();
                 });
             }
             if(sortTasksSelect) {
                 sortTasksSelect.addEventListener('change', (e) => {
                     currentSort = e.target.value;
-                    renderAppUI(); // Seçim değiştiğinde UI'ı yeniden render et
+                    renderAppUI();
                 });
             }
             
-            // Gemini Modal Listeners
-            if(saveGeminiApiKeyButton) {
-                saveGeminiApiKeyButton.addEventListener('click', saveUserGeminiApiKey);
-            }
-            if(closeGeminiApiKeyModalButton) {
-                closeGeminiApiKeyModalButton.addEventListener('click', () => {
-                    if(geminiApiKeyModal) geminiApiKeyModal.classList.add('hidden');
-                });
-            }
+            // Modal Kapatma Butonları
+            if(closeErrorModalButton) closeErrorModalButton.addEventListener('click', () => errorModal.classList.add('hidden'));
+            if(closeGeminiApiKeyModalButton) closeGeminiApiKeyModalButton.addEventListener('click', () => geminiApiKeyModal.classList.add('hidden'));
+            if(closeEditTaskModalButton) closeEditTaskModalButton.addEventListener('click', () => editTaskModal.classList.add('hidden'));
+
+            // Modal Kaydetme Butonları
+            if(saveGeminiApiKeyButton) saveGeminiApiKeyButton.addEventListener('click', saveUserGeminiApiKey);
+            if(saveTaskChangesButton) saveTaskChangesButton.addEventListener('click', handleUpdateTask);
+
+            // Diğer Butonlar
             if(manageApiKeyButton) {
                 manageApiKeyButton.addEventListener('click', () => {
-                     if(geminiApiKeyModal) geminiApiKeyModal.classList.remove('hidden');
-                     if(geminiApiKeyInput && userProvidedGeminiApiKey) geminiApiKeyInput.value = userProvidedGeminiApiKey;
-                     else if (geminiApiKeyInput) geminiApiKeyInput.value = '';
+                        if(geminiApiKeyModal) geminiApiKeyModal.classList.remove('hidden');
+                        if(geminiApiKeyInput && userProvidedGeminiApiKey) geminiApiKeyInput.value = userProvidedGeminiApiKey;
+                        else if (geminiApiKeyInput) geminiApiKeyInput.value = '';
                 });
             }
-            if(closeEditTaskModalButton) closeEditTaskModalButton.addEventListener('click', () => editTaskModal.classList.add('hidden'));
-            if(saveTaskChangesButton) saveTaskChangesButton.addEventListener('click', handleUpdateTask);
         });
     </script>
     <style>
