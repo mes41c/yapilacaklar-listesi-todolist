@@ -80,6 +80,8 @@
         let defaultListTodayId = null;
         let defaultListLaterId = null;
         let userProvidedGeminiApiKey = null;
+        let undoTimeout = null;
+        let lastDeletedTasks = [];
 
         // YENİ: Filtreleme ve sıralama için global durum
         let currentFilter = 'all';
@@ -142,6 +144,8 @@
         const editTaskListSelect = document.getElementById('editTaskListSelect');
         const closeEditTaskModalButton = document.getElementById('closeEditTaskModalButton');
         const saveTaskChangesButton = document.getElementById('saveTaskChangesButton');
+        const undoSnackbar = document.getElementById('undoSnackbar');
+        const undoButton = document.getElementById('undoButton');
 
         function showAppErrorModal(message) {
             if(errorMessage) errorMessage.textContent = message;
@@ -732,23 +736,93 @@
             catch (error) { showAppErrorModal(`Görev güncellenirken hata: ${error.message}`); }
         }
         async function deleteTask(taskId) {
-            if (!userId || !db) { showAppErrorModal('Oturum açılmalı veya veritabanı hazır değil.'); return; }
-            const userTodosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
-            const batch = writeBatch(db);
-            const tasksToDeleteIds = [taskId];
+            if (!userId || !db) return;
+
+            // Önceki geri alma işlemini iptal et ve bekleyen silmeyi gerçekleştir
+            if (undoTimeout) {
+                clearTimeout(undoTimeout);
+                await performDelete();
+            }
+
+            const tasksToDelete = [];
+            const taskIdsToDelete = new Set();
+
             function findDescendants(currentParentId) {
                 const directChildren = localTasksCache.filter(t => t.data.parentId === currentParentId);
                 for (const child of directChildren) {
-                    tasksToDeleteIds.push(child.id);
-                    findDescendants(child.id);
+                    if (!taskIdsToDelete.has(child.id)) {
+                        tasksToDelete.push({ id: child.id, data: child.data });
+                        taskIdsToDelete.add(child.id);
+                        findDescendants(child.id);
+                    }
                 }
             }
-            findDescendants(taskId);
-            tasksToDeleteIds.forEach(idToDelete => {
-                batch.delete(doc(userTodosCollectionRef, idToDelete));
+            
+            const mainTask = localTasksCache.find(t => t.id === taskId);
+            if (mainTask) {
+                tasksToDelete.push({ id: mainTask.id, data: mainTask.data });
+                taskIdsToDelete.add(mainTask.id);
+                findDescendants(taskId);
+            }
+
+            lastDeletedTasks = tasksToDelete;
+
+            // UI'dan geçici olarak kaldır
+            const tempRemovedTasks = localTasksCache.filter(task => !taskIdsToDelete.has(task.id));
+            const oldCache = localTasksCache;
+            localTasksCache = tempRemovedTasks;
+            renderAppUI(); 
+            localTasksCache = oldCache; // Cache'i geri yükle ki geri alma işlemi datayı bulabilsin
+
+            undoSnackbar.classList.remove('hidden', 'opacity-0', 'translate-y-20');
+
+            undoTimeout = setTimeout(async () => {
+                await performDelete();
+            }, 10000); // 10 saniye
+        }
+
+        async function performDelete() {
+            if (!lastDeletedTasks || lastDeletedTasks.length === 0) return;
+
+            const batch = writeBatch(db);
+            const userTodosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
+            lastDeletedTasks.forEach(task => {
+                batch.delete(doc(userTodosCollectionRef, task.id));
             });
-            try { await batch.commit(); }
-            catch (error) { showAppErrorModal(`Görev(ler) silinirken hata: ${error.message}`); }
+            
+            try {
+                await batch.commit();
+                console.log(`${lastDeletedTasks.length} görev kalıcı olarak silindi.`);
+            } catch (error) {
+                showAppErrorModal(`Görev(ler) silinirken hata: ${error.message}`);
+            } finally {
+                lastDeletedTasks = [];
+                undoTimeout = null;
+                undoSnackbar.classList.add('hidden', 'opacity-0', 'translate-y-20');
+            }
+        }
+        async function handleUndoDelete() {
+            clearTimeout(undoTimeout);
+            undoTimeout = null;
+            
+            if (lastDeletedTasks.length > 0) {
+                const batch = writeBatch(db);
+                const userTodosCollectionRef = collection(db, "artifacts", appId, "users", userId, "todos");
+                lastDeletedTasks.forEach(task => {
+                    const taskRef = doc(userTodosCollectionRef, task.id);
+                    batch.set(taskRef, task.data);
+                });
+
+                try {
+                    await batch.commit();
+                } catch(e) {
+                    showAppErrorModal("Geri alma işlemi başarısız oldu: " + e.message);
+                }
+            }
+
+            lastDeletedTasks = [];
+            undoSnackbar.classList.add('hidden', 'opacity-0', 'translate-y-20');
+            // Not: onSnapshot UI'ı otomatik güncelleyecektir.
         }
         async function updateTaskText(taskId, newText) {
             if (!userId || !db) { showAppErrorModal('Oturum açılmalı veya veritabanı hazır değil.'); return; }
@@ -1051,6 +1125,29 @@
                 breakDownButton.title = "Görevi Parçala";
                 breakDownButton.addEventListener('click', (e) => { e.stopPropagation(); breakDownTaskIntoSubtasks(taskId, task.text, breakDownButton, parentListId); });
                 taskActions.appendChild(breakDownButton);
+                const addSubtaskButton = document.createElement('button');
+                addSubtaskButton.innerHTML = `+`;
+                addSubtaskButton.className = 'bg-green-500 hover:bg-green-600 text-white font-bold py-0.5 px-2 rounded-md shadow-sm text-xs';
+                addSubtaskButton.title = "Alt Görev Ekle";
+                
+                addSubtaskButton.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const subtaskText = prompt(`Alt görev ekle:\nAna Görev: "${task.text}"`);
+                    if (subtaskText && subtaskText.trim() !== "") {
+                        // Butonu geçici olarak devre dışı bırak
+                        addSubtaskButton.disabled = true;
+                        try {
+                            const newOrder = await getNextOrderValue(taskId, parentListId);
+                            await addTaskToFirestore(subtaskText.trim(), taskId, "", newOrder, parentListId);
+                        } catch (error) {
+                            showAppErrorModal("Alt görev eklenirken bir hata oluştu.");
+                        } finally {
+                            // Butonu tekrar aktif et
+                            addSubtaskButton.disabled = false;
+                        }
+                    }
+                });
+                taskActions.appendChild(addSubtaskButton);
             }
             
             const deleteButton = document.createElement('button');
@@ -1369,6 +1466,8 @@
             if(saveGeminiApiKeyButton) saveGeminiApiKeyButton.addEventListener('click', saveUserGeminiApiKey);
             if(saveTaskChangesButton) saveTaskChangesButton.addEventListener('click', handleUpdateTask);
 
+            if(undoButton) undoButton.addEventListener('click', handleUndoDelete);
+
             // Diğer Butonlar
             if(manageApiKeyButton) {
                 manageApiKeyButton.addEventListener('click', () => {
@@ -1605,6 +1704,10 @@
         </div>
     </div>
 
+    <div id="undoSnackbar" class="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-800 text-white py-3 px-5 rounded-lg shadow-xl flex items-center justify-between transition-transform transform translate-y-20 opacity-0 hidden">
+        <span id="undoMessage">Görev silindi.</span>
+        <button id="undoButton" class="ml-4 font-semibold text-cyan-400 hover:text-cyan-300 underline">Geri Al</button>
+    </div>
     <footer class="mt-8 text-center">
         <p class="text-xs sm:text-sm text-white opacity-80">Yapılacaklar Listesi &copy; 2024</p>
     </footer>
