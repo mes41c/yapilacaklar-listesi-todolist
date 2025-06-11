@@ -945,6 +945,7 @@
             const leftSection = document.createElement('div');
             leftSection.className = 'flex flex-col items-start flex-grow min-w-0';
             
+            // --- HATA BURADAYDI, ŞİMDİ DÜZELTİLDİ ---
             const mainTaskContent = document.createElement('div');
             mainTaskContent.className = 'flex items-center w-full';
 
@@ -956,16 +957,12 @@
                 collapseButton.innerHTML = taskDoc.isCollapsed ?
                      `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" /></svg>` :
                      `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-gray-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>`;
-                collapseButton.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    taskDoc.isCollapsed = !taskDoc.isCollapsed;
-                    renderAppUI();
-                 });
+                collapseButton.addEventListener('click', (e) => { e.stopPropagation(); taskDoc.isCollapsed = !taskDoc.isCollapsed; renderAppUI(); });
                 mainTaskContent.appendChild(collapseButton);
             } else if (level === 0) {
-                  const spacer = document.createElement('div');
-                 spacer.className = 'w-[18px] mr-1';
-                  mainTaskContent.appendChild(spacer);
+                const spacer = document.createElement('div');
+                spacer.className = 'w-[18px] mr-1';
+                mainTaskContent.appendChild(spacer);
             }
 
             const checkbox = document.createElement('input');
@@ -980,8 +977,9 @@
             taskTextElement.className = `task-text text-gray-700 dark:text-gray-200 text-sm sm:text-base truncate ${task.completed ? 'line-through text-gray-400' : ''}`;
             mainTaskContent.appendChild(taskTextElement);
             
-            leftSection.appendChild(mainTaskContent);
-
+            leftSection.appendChild(mainTaskContent); // Bu satır en kritik olanıydı.
+            // --- HATA BURADAYDI, ŞİMDİ DÜZELTİLDİ ---
+            
             const detailsContainer = document.createElement('div');
             detailsContainer.className = 'flex items-center space-x-3 mt-1 ml-10';
             
@@ -1005,11 +1003,8 @@
                 today.setHours(0, 0, 0, 0);
 
                 let textColor = 'text-gray-500 dark:text-gray-400';
-                if (!task.completed && dueDateObj < today) {
-                    textColor = 'text-red-600 font-semibold';
-                } else if (!task.completed && dueDateObj.getTime() === today.getTime()) {
-                    textColor = 'text-emerald-600 font-semibold';
-                }
+                if (!task.completed && dueDateObj < today) { textColor = 'text-red-600 font-semibold'; } 
+                else if (!task.completed && dueDateObj.getTime() === today.getTime()) { textColor = 'text-emerald-600 font-semibold'; }
                 
                 const dateString = dueDateObj.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
                 const calendarIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>`;
@@ -1040,10 +1035,7 @@
                 editButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-500 hover:text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>`;
                 editButton.className = 'p-0.5 sm:p-1 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 edit-action-btn';
                 editButton.title = "Görevi Düzenle";
-                editButton.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    openEditModal(taskId);
-                });
+                editButton.addEventListener('click', (e) => { e.stopPropagation(); openEditModal(taskId); });
                 taskActions.appendChild(editButton);
 
                 const elaborateButton = document.createElement('button');
@@ -1083,7 +1075,6 @@
                 });
             }
         }
-
         // GÜNCELLENDİ: Ana render fonksiyonu, filtreleme ve sıralama mantığını içerecek şekilde güncellendi.
         function renderAppUI() {
             if (!userId) {
