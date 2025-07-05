@@ -63,6 +63,7 @@ Projeyi Klonlayın:
 Bash
 
 git clone https://github.com/kullanici-adiniz/yapilacaklar-listesi-todolist.git
+
 Firebase Projesi Oluşturun:
 
 Firebase konsolunda yeni bir proje oluşturun.
