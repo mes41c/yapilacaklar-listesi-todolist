@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+function initWeeklyPlanner() {
     // ---- ELEMENT SEÇİMLERİ ----
     const gorevInput = document.getElementById('gorev-input');
     const oncelikSelect = document.getElementById('oncelik-select');
@@ -292,4 +292,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ---- UYGULAMAYI BAŞLAT ----
     renderAll();
-});
+
+}
