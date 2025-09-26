@@ -309,3 +309,57 @@ header p {
 .gorev[data-priority="yuksek"] { border-left-color: var(--oncelik-yuksek); }
 .gorev[data-priority="orta"] { border-left-color: var(--oncelik-orta); }
 .gorev[data-priority="dusuk"] { border-left-color: var(--oncelik-dusuk); }
+
+/* ========================================= */
+/* MOBİL UYUMLULUK KODLARI        */
+/* ========================================= */
+
+@media (max-width: 768px) {
+
+    /* --- Genel Container ve Header --- */
+    .container {
+        padding: 1rem; /* Kenar boşluklarını azalt */
+    }
+
+    header h1 {
+        font-size: 2rem; /* Başlığı küçült */
+    }
+
+    /* --- Kontrol Paneli (Arama, İç/Dışa Aktar) --- */
+    .kontrol-paneli {
+        flex-direction: column; /* Yataydan dikeye çevir */
+        gap: 1rem; /* Öğeler arasına boşluk ekle */
+        align-items: stretch; /* Öğeleri tam genişliğe yay */
+    }
+
+    #arama-input {
+        width: 100%; /* Arama çubuğunu tam genişlik yap */
+    }
+
+    /* --- Yeni Görev Ekleme Formu --- */
+    .form-grup {
+        flex-direction: column; /* Form elemanlarını alt alta sırala */
+        gap: 0.75rem; /* Form elemanları arasına boşluk ekle */
+    }
+
+    #gorev-input, #oncelik-select, #tarih-input, #gorev-ekle-btn {
+        width: 100%; /* Tüm form elemanlarını tam genişlik yap */
+    }
+
+    /* --- Planlayıcı Ana Alanı --- */
+    .planlayici-alani {
+        flex-direction: column; /* "Görevler" ve "Haftalık Planlayıcı" bölümlerini alt alta al */
+    }
+
+    /* --- Haftalık Planlayıcı Grid Düzeni --- */
+    .haftalik-planlayici {
+        grid-template-columns: 1fr; /* 7 sütunlu grid'i tek sütuna düşür */
+        gap: 1rem; /* Günler arasına boşluk ekle */
+    }
+
+    /* --- Hafta Navigasyonu (< Önceki Hafta >) --- */
+    .hafta-navigator h2 {
+        font-size: 1rem; /* Hafta başlığı yazısını küçült */
+        text-align: center;
+    }
+}
