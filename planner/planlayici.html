@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haftalık Planlayıcı</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>Haftalık Planlayıcı</h1>
+            <p>Görevlerinizi yönetin ve haftanızı kolayca planlayın.</p>
+        </header>
+
+        <main>
+            <div class="kontrol-paneli">
+                <div class="arama-filtre">
+                    <input type="text" id="arama-input" placeholder="Görevlerde ara...">
+                </div>
+                <div class="veri-yonetimi">
+                    <button id="disa-aktar-btn">Dışa Aktar (JSON)</button>
+                    <button id="ice-aktar-btn">İçe Aktar (JSON)</button>
+                    <input type="file" id="ice-aktar-input" accept=".json" style="display: none;">
+                </div>
+            </div>
+
+            <div class="gorev-ekleme-paneli">
+                <h2>Yeni Görev Ekle</h2>
+                <div class="form-grup">
+                    <input type="text" id="gorev-input" placeholder="Yapılacak görevi yazın...">
+                    <input type="date" id="tarih-input" title="Son Teslim Tarihi (İsteğe Bağlı)">
+                    <select id="oncelik-select">
+                        <option value="dusuk">Düşük Öncelik</option>
+                        <option value="orta">Orta Öncelik</option>
+                        <option value="yuksek">Yüksek Öncelik</option>
+                    </select>
+                    <button id="gorev-ekle-btn">Ekle</button>
+                </div>
+            </div>
+
+            <div id="haftalik-planlayici-wrapper">
+                <div class="hafta-navigator">
+                    <button id="onceki-hafta-btn">&lt; Önceki Hafta</button>
+                    <h2 id="hafta-baslik"></h2>
+                    <button id="sonraki-hafta-btn">Sonraki Hafta &gt;</button>
+                </div>
+                <div class="planlayici-alani">
+                    <div id="atanmamis-gorevler-bolumu" class="gun-sutunu">
+                        <h3>Görevler</h3>
+                        <div class="gorev-listesi" data-day="atanmamis"></div>
+                    </div>
+                    <div class="haftalik-planlayici">
+                        </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
