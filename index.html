@@ -1414,6 +1414,8 @@
             const showTodoBtn = document.getElementById('showTodoBtn');
             const showPlannerBtn = document.getElementById('showPlannerBtn');
 
+            let isPlannerInitialized = false;
+
             if(showTodoBtn && showPlannerBtn) {
                 showTodoBtn.addEventListener('click', () => {
                     todoContainer.classList.remove('hidden');
@@ -1431,6 +1433,11 @@
                     showPlannerBtn.classList.remove('bg-gray-200', 'text-gray-700');
                     showTodoBtn.classList.add('bg-gray-200', 'text-gray-700');
                     showTodoBtn.classList.remove('bg-cyan-600', 'text-white');
+
+                    if (!isPlannerInitialized) {
+                        initWeeklyPlanner();
+                        isPlannerInitialized = true;
+                    }
                 });
             }
 
@@ -1768,8 +1775,9 @@
         <p class="text-xs sm:text-sm text-white opacity-80">Yapılacaklar Listesi &copy; 2024</p>
     </footer>
 
-    <script src="https://cdn.jsdelivr.net/gh/mes41c/yapilacaklar-listesi-todolist/script.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mes41c/yapilacaklar-listesi-todolist/script.js" defer></script>
 
 </body>
 </html>
+
 
