@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Eisenhower Matrisi v6.3 - Scroll Fixed</title>
+    <title>Eisenhower Matrisi v6.4 - Cleaner</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -89,6 +89,40 @@
         }
 
         // --- ACTIONS ---
+        
+        // YENİ: GENEL TEMİZLEME FONKSİYONU
+        window.clearQuadrant = async function(qId) {
+            // 1. O kutudaki görevleri bul
+            let tasksToDelete = localTasks.filter(t => t.matrixQuadrant === qId);
+            
+            // 2. Eğer bir filtre (etiket) seçiliyse SADECE O ETİKETİ sil
+            if (currentFilter !== 'all') {
+                tasksToDelete = tasksToDelete.filter(t => (t.tag || 'genel') === currentFilter);
+            }
+
+            if (tasksToDelete.length === 0) {
+                showToast("Silinecek görev bulunamadı.");
+                return;
+            }
+
+            const filterMsg = currentFilter !== 'all' ? `(${currentFilter})` : '';
+            
+            if(!confirm(`${titles[qId]} bölümündeki ${tasksToDelete.length} görevi ${filterMsg} silmek istediğine emin misin?`)) return;
+
+            // 3. Toplu Silme (Batch)
+            const batch = writeBatch(db);
+            tasksToDelete.forEach(t => {
+                batch.delete(doc(db, "artifacts", appId, "users", userId, "todos", t.id));
+            });
+
+            try {
+                await batch.commit();
+                showToast(`🧹 ${titles[qId]} temizlendi.`);
+            } catch (e) {
+                showToast("Hata: " + e.message);
+            }
+        }
+
         window.toggleTaskCompletion = async function(id, currentStatus) {
             try { await updateDoc(doc(db, "artifacts", appId, "users", userId, "todos", id), { completed: !currentStatus }); } 
             catch (e) { showToast("Hata: " + e.message); }
@@ -263,10 +297,7 @@
             try { await addDoc(collection(db, "artifacts", appId, "users", userId, "todos"), { text: text, completed: false, createdAt: serverTimestamp(), matrixQuadrant: quadrant, tag: newTag }); } catch (e) { showToast("Hata: " + e.message); }
         }
         window.deleteTask = async function(id) { if(!confirm('Silinsin mi?')) return; try { await deleteDoc(doc(db, "artifacts", appId, "users", userId, "todos", id)); } catch(e) { showToast("Silinemedi: " + e.message); } }
-        window.cleanQ4 = async function() {
-            const tasksToDelete = localTasks.filter(t => t.matrixQuadrant === 'q4'); if(tasksToDelete.length === 0) return; if(!confirm(`${tasksToDelete.length} adet önemsiz görevi silmek istediğine emin misin?`)) return;
-            tasksToDelete.forEach(async (t) => { await deleteDoc(doc(db, "artifacts", appId, "users", userId, "todos", t.id)); }); showToast("🧹 Q4 temizlendi.");
-        }
+        
         window.drop = async function(e, targetQuadrant) {
             e.preventDefault(); const taskId = e.dataTransfer.getData("text/plain"); if (!taskId) return; const realTarget = targetQuadrant === 'null' ? null : targetQuadrant;
             if (realTarget === 'q1') { const task = localTasks.find(t => t.id === taskId); const currentQ1Count = localTasks.filter(t => t.matrixQuadrant === 'q1').length; if (task && task.matrixQuadrant !== 'q1' && currentQ1Count >= wipLimit) { showToast(`⚠️ Q1 Limiti (${wipLimit}) Dolu.`); return; } }
@@ -405,7 +436,7 @@
                            class="w-full bg-transparent text-sm text-white px-2 py-1 outline-none"
                            onkeypress="handleQuickAdd(event)">
                 </div>
-                <div id="backlog-list" class="flex-1 min-h-0 p-3 space-y-2 overflow-y-auto bg-slate-900/30" 
+                <div id="backlog-list" class="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-900/30" 
                      ondragover="allowDrop(event)" ondrop="drop(event, 'null')"></div>
             </aside>
 
@@ -418,7 +449,10 @@
                             <h3 id="title-q1" class="font-bold text-red-400 cursor-pointer" onclick="editTitle('q1')">Acil & Önemli</h3>
                             <span id="wip-badge" class="text-xs font-bold bg-red-900 text-red-200 px-2 py-0.5 rounded-full border border-red-700 cursor-pointer hover:bg-red-800 transition">0/3</span>
                         </div>
-                        <button onclick="addNewTaskDirectly('q1')" class="text-red-400 hover:bg-red-900/50 w-6 h-6 rounded">+</button>
+                        <div class="flex items-center gap-1">
+                            <button onclick="clearQuadrant('q1')" class="text-red-400/60 hover:text-red-400 hover:bg-red-900/30 w-6 h-6 rounded flex items-center justify-center transition" title="Tümünü Temizle"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                            <button onclick="addNewTaskDirectly('q1')" class="text-red-400 hover:bg-red-900/50 w-6 h-6 rounded flex items-center justify-center text-lg leading-none pb-0.5">+</button>
+                        </div>
                     </div>
                     <div id="list-q1" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                     <div id="zenExitOverlay" class="absolute bottom-4 right-4 hidden">
@@ -433,7 +467,10 @@
                             <h3 id="title-q2" class="font-bold text-blue-400 cursor-pointer" onclick="editTitle('q2')">Acil Değil & Önemli</h3>
                             <span class="text-xs font-bold bg-blue-900 text-blue-200 px-2 py-0.5 rounded-full count-badge">0</span>
                         </div>
-                        <button onclick="addNewTaskDirectly('q2')" class="text-blue-400 hover:bg-blue-900/50 w-6 h-6 rounded">+</button>
+                        <div class="flex items-center gap-1">
+                            <button onclick="clearQuadrant('q2')" class="text-blue-400/60 hover:text-blue-400 hover:bg-blue-900/30 w-6 h-6 rounded flex items-center justify-center transition" title="Tümünü Temizle"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                            <button onclick="addNewTaskDirectly('q2')" class="text-blue-400 hover:bg-blue-900/50 w-6 h-6 rounded flex items-center justify-center text-lg leading-none pb-0.5">+</button>
+                        </div>
                     </div>
                     <div id="list-q2" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
@@ -445,7 +482,10 @@
                             <h3 id="title-q3" class="font-bold text-yellow-400 cursor-pointer" onclick="editTitle('q3')">Acil & Önemsiz</h3>
                             <span class="text-xs font-bold bg-yellow-900 text-yellow-200 px-2 py-0.5 rounded-full count-badge">0</span>
                         </div>
-                        <button onclick="addNewTaskDirectly('q3')" class="text-yellow-400 hover:bg-yellow-900/50 w-6 h-6 rounded">+</button>
+                        <div class="flex items-center gap-1">
+                            <button onclick="clearQuadrant('q3')" class="text-yellow-400/60 hover:text-yellow-400 hover:bg-yellow-900/30 w-6 h-6 rounded flex items-center justify-center transition" title="Tümünü Temizle"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                            <button onclick="addNewTaskDirectly('q3')" class="text-yellow-400 hover:bg-yellow-900/50 w-6 h-6 rounded flex items-center justify-center text-lg leading-none pb-0.5">+</button>
+                        </div>
                     </div>
                     <div id="list-q3" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
@@ -457,7 +497,7 @@
                             <h3 id="title-q4" class="font-bold text-gray-400 cursor-pointer" onclick="editTitle('q4')">Acil Değil & Önemsiz</h3>
                             <span class="text-xs font-bold bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full count-badge">0</span>
                         </div>
-                        <button onclick="cleanQ4()" class="text-xs text-red-400 hover:text-red-300 bg-red-900/20 hover:bg-red-900/40 px-2 py-1 rounded transition" title="Tümünü Temizle">
+                        <button onclick="clearQuadrant('q4')" class="text-xs text-red-400 hover:text-red-300 bg-red-900/20 hover:bg-red-900/40 px-2 py-1 rounded transition" title="Tümünü Temizle">
                             <i class="fa-solid fa-trash"></i> Temizle
                         </button>
                     </div>
