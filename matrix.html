@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Eisenhower Matrisi v6.2 - Ultimate</title>
+    <title>Eisenhower Matrisi v6.3 - Scroll Fixed</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -90,11 +90,8 @@
 
         // --- ACTIONS ---
         window.toggleTaskCompletion = async function(id, currentStatus) {
-            try {
-                await updateDoc(doc(db, "artifacts", appId, "users", userId, "todos", id), {
-                    completed: !currentStatus
-                });
-            } catch (e) { showToast("Hata: " + e.message); }
+            try { await updateDoc(doc(db, "artifacts", appId, "users", userId, "todos", id), { completed: !currentStatus }); } 
+            catch (e) { showToast("Hata: " + e.message); }
         }
 
         window.editWipLimit = function() {
@@ -169,13 +166,11 @@
             div.addEventListener('dragstart', (e) => { e.dataTransfer.setData("text/plain", task.id); e.target.classList.add('dragging'); });
             div.addEventListener('dragend', (e) => { e.target.classList.remove('dragging'); });
             
-            // YENİ: TAMAMLA BUTONU VE POMODORO
             let focusBtn = '';
             if ((task.matrixQuadrant === 'q1' || task.matrixQuadrant === 'q2') && !task.completed) {
                 focusBtn = `<button onclick="openPomodoroModal('${task.id}', '${task.text.replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-red-400 transition ml-2 p-1" title="Odaklan"><i class="fa-regular fa-clock"></i></button>`;
             }
 
-            // Tamamlama Butonu İkonu
             const completeIconClass = task.completed ? "fa-solid fa-circle-check text-green-500" : "fa-regular fa-circle text-slate-500 hover:text-green-400";
 
             div.innerHTML = `
@@ -199,7 +194,7 @@
             return div;
         }
 
-        // --- UTILS & FEATURES ---
+        // --- UTILS ---
         window.openBrainDump = function() { document.getElementById('brainDumpModal').classList.remove('hidden'); document.getElementById('brainDumpInput').focus(); }
         window.processBrainDump = async function() {
             const input = document.getElementById('brainDumpInput');
@@ -233,7 +228,6 @@
         });
 
         window.changeSort = function(val) { currentSort = val; renderAll(); }
-        
         let currentTaskName = ""; let focusTime = 25 * 60;
         window.openPomodoroModal = function(id, text) { currentTaskName = text; document.getElementById('pomodoroModal').classList.remove('hidden'); document.getElementById('pomoTaskTitle').textContent = text; document.getElementById('pomoInput').value = 25; }
         window.startFocus = function() {
@@ -411,12 +405,13 @@
                            class="w-full bg-transparent text-sm text-white px-2 py-1 outline-none"
                            onkeypress="handleQuickAdd(event)">
                 </div>
-                <div id="backlog-list" class="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-900/30" 
+                <div id="backlog-list" class="flex-1 min-h-0 p-3 space-y-2 overflow-y-auto bg-slate-900/30" 
                      ondragover="allowDrop(event)" ondrop="drop(event, 'null')"></div>
             </aside>
 
-            <main class="flex-1 order-2 grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-4 transition-all duration-500 pb-20 md:pb-0 md:h-full">
-                <div id="q1-container" class="quadrant focus-area bg-red-900/10 border border-red-900/50 rounded-xl flex flex-col relative transition-all duration-500 min-h-[300px] md:min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q1')">
+            <main class="flex-1 order-2 grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-4 transition-all duration-500 pb-20 md:pb-0 md:h-full md:overflow-hidden">
+                
+                <div id="q1-container" class="quadrant focus-area bg-red-900/10 border border-red-900/50 rounded-xl flex flex-col relative transition-all duration-500 min-h-[300px] md:min-h-0 md:h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q1')">
                     <div class="p-3 flex justify-between items-center border-b border-red-900/30 bg-red-900/20 rounded-t-xl">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-red-500 animate-pulse">🚨</span>
@@ -425,13 +420,13 @@
                         </div>
                         <button onclick="addNewTaskDirectly('q1')" class="text-red-400 hover:bg-red-900/50 w-6 h-6 rounded">+</button>
                     </div>
-                    <div id="list-q1" class="flex-1 p-2 space-y-2 overflow-y-auto"></div>
+                    <div id="list-q1" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                     <div id="zenExitOverlay" class="absolute bottom-4 right-4 hidden">
                          <button onclick="toggleZenMode()" class="bg-slate-800 text-slate-200 px-4 py-2 rounded-full shadow-xl border border-slate-600 text-sm font-bold hover:bg-slate-700">Odaktan Çık</button>
                     </div>
                 </div>
 
-                <div id="q2-container" class="quadrant non-focus-area bg-blue-900/10 border border-blue-900/50 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q2')">
+                <div id="q2-container" class="quadrant non-focus-area bg-blue-900/10 border border-blue-900/50 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0 md:h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q2')">
                     <div class="p-3 flex justify-between items-center border-b border-blue-900/30 bg-blue-900/20 rounded-t-xl">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-blue-500">📅</span>
@@ -440,10 +435,10 @@
                         </div>
                         <button onclick="addNewTaskDirectly('q2')" class="text-blue-400 hover:bg-blue-900/50 w-6 h-6 rounded">+</button>
                     </div>
-                    <div id="list-q2" class="flex-1 p-2 space-y-2 overflow-y-auto"></div>
+                    <div id="list-q2" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
 
-                <div id="q3-container" class="quadrant non-focus-area bg-yellow-900/10 border border-yellow-900/50 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q3')">
+                <div id="q3-container" class="quadrant non-focus-area bg-yellow-900/10 border border-yellow-900/50 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0 md:h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q3')">
                     <div class="p-3 flex justify-between items-center border-b border-yellow-900/30 bg-yellow-900/20 rounded-t-xl">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-yellow-500">⚡</span>
@@ -452,10 +447,10 @@
                         </div>
                         <button onclick="addNewTaskDirectly('q3')" class="text-yellow-400 hover:bg-yellow-900/50 w-6 h-6 rounded">+</button>
                     </div>
-                    <div id="list-q3" class="flex-1 p-2 space-y-2 overflow-y-auto"></div>
+                    <div id="list-q3" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
 
-                <div id="q4-container" class="quadrant non-focus-area bg-gray-800/30 border border-gray-700 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q4')">
+                <div id="q4-container" class="quadrant non-focus-area bg-gray-800/30 border border-gray-700 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0 md:h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q4')">
                     <div class="p-3 flex justify-between items-center border-b border-gray-700 bg-gray-800/50 rounded-t-xl">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-gray-500">🗑️</span>
@@ -466,7 +461,7 @@
                             <i class="fa-solid fa-trash"></i> Temizle
                         </button>
                     </div>
-                    <div id="list-q4" class="flex-1 p-2 space-y-2 overflow-y-auto"></div>
+                    <div id="list-q4" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
             </main>
         </div>
