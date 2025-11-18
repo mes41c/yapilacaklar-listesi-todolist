@@ -2,8 +2,8 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eisenhower Matrisi - Komuta Merkezi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Eisenhower Matrisi v6.2 - Ultimate</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -13,10 +13,9 @@
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, collection, query, orderBy, onSnapshot, 
-            doc, updateDoc, addDoc, deleteDoc, serverTimestamp 
+            doc, updateDoc, addDoc, setDoc, deleteDoc, serverTimestamp, writeBatch 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- FIREBASE AYARLARI (index.html ile aynı) ---
         const firebaseConfig = {
           apiKey: "AIzaSyCCML1QJZWGQbIHFtr7iohPzT11E5RBONo",
           authDomain: "yapilacaklarlistesi-aa004.firebaseapp.com",
@@ -29,334 +28,302 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const appId = 'todo-app-rebuild-final-v2'; // Proje ID'si
+        const appId = 'todo-app-rebuild-final-v2';
 
         let userId = null;
         let localTasks = [];
-        const WIP_LIMIT = 3;
-        
-        // Kategorileri LocalStorage'da tutuyoruz (Basitlik için)
+        let wipLimit = 3;
         let defaultCategories = [
             { id: 'genel', name: 'Genel', color: 'bg-gray-600' },
             { id: 'kodlama', name: 'Kodlama', color: 'bg-blue-600' },
             { id: 'ders', name: 'Ders', color: 'bg-purple-600' },
             { id: 'kisisel', name: 'Kişisel', color: 'bg-green-600' }
         ];
-        let categories = JSON.parse(localStorage.getItem('matrixCategories')) || defaultCategories;
+        let categories = defaultCategories;
+        let titles = { q1: "Acil & Önemli", q2: "Acil Değil & Önemli", q3: "Acil & Önemsiz", q4: "Acil Değil & Önemsiz" };
         let currentFilter = 'all';
+        let currentSort = 'date-desc'; 
         let isZenMode = false;
+        let timerInterval = null;
 
-        // --- AUTH & LISTENER ---
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 userId = user.uid;
                 document.getElementById('authLoading').classList.add('hidden');
                 document.getElementById('appContent').classList.remove('hidden');
                 listenToTasks();
-                renderFilters();
+                listenToSettings();
             } else {
-                // Giriş yapılmamışsa ana sayfaya yönlendir veya uyar
                 window.location.href = 'index.html';
             }
         });
 
         function listenToTasks() {
-            const q = query(collection(db, "artifacts", appId, "users", userId, "todos"), orderBy("createdAt", "desc"));
+            const q = query(collection(db, "artifacts", appId, "users", userId, "todos"));
             onSnapshot(q, (snapshot) => {
                 localTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderAll();
             });
         }
 
-        // --- UI RENDER ---
-        window.renderAll = function() {
-            // Temizle
-            document.getElementById('backlog-list').innerHTML = '';
-            ['q1', 'q2', 'q3', 'q4'].forEach(q => document.getElementById(`list-${q}`).innerHTML = '');
-
-            // Filtrele
-            const filteredTasks = localTasks.filter(t => {
-                // Eğer görev silinmişse veya tamamlanmışsa (opsiyonel) gösterme
-                // Şimdilik tamamlananları da gösteriyoruz ama silik olabilir
-                if (currentFilter === 'all') return true;
-                return (t.tag || 'genel') === currentFilter;
-            });
-
-            // Dağıt
-            filteredTasks.forEach(task => {
-                // Eğer task'in matrixQuadrant değeri yoksa 'null' kabul et (Havuz)
-                const quadrant = task.matrixQuadrant || 'null';
-                const el = createTaskElement(task);
-                
-                if (quadrant === 'null') {
-                    document.getElementById('backlog-list').appendChild(el);
+        function listenToSettings() {
+            const settingsRef = doc(db, "artifacts", appId, "users", userId, "settings", "matrixConfig");
+            onSnapshot(settingsRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    if (data.wipLimit) wipLimit = data.wipLimit;
+                    if (data.categories) categories = data.categories;
+                    if (data.titles) titles = data.titles;
+                    renderFilters(); updateCounts(); renderAll(); updateTitleTexts();
                 } else {
-                    const targetList = document.getElementById(`list-${quadrant}`);
-                    if (targetList) targetList.appendChild(el);
+                    saveSettings({ wipLimit, categories, titles });
                 }
             });
-
-            updateCounts();
         }
 
-        function createTaskElement(task) {
-            const div = document.createElement('div');
-            const taskTag = task.tag || 'genel';
-            const category = categories.find(c => c.id === taskTag) || { name: taskTag, color: 'bg-gray-600' };
-
-            div.className = `bg-slate-700 p-3 rounded-lg shadow-sm border border-slate-600 cursor-grab active:cursor-grabbing hover:bg-slate-600 hover:border-slate-500 transition-all flex flex-col gap-1 group relative animate-[fadeIn_0.3s_ease-in-out] ${task.completed ? 'opacity-50' : ''}`;
-            div.draggable = true;
-            div.id = task.id;
-            
-            // Sürükle Bırak Eventleri
-            div.addEventListener('dragstart', (e) => {
-                e.dataTransfer.setData("text/plain", task.id);
-                e.target.classList.add('dragging');
-            });
-            div.addEventListener('dragend', (e) => {
-                e.target.classList.remove('dragging');
-            });
-            
-            div.innerHTML = `
-                <div class="flex justify-between items-start">
-                    <span class="text-sm text-slate-200 leading-tight ${task.completed ? 'line-through' : ''}">${task.text}</span>
-                    <button onclick="deleteTask('${task.id}')" class="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition ml-2">✕</button>
-                </div>
-                <div class="flex gap-2 mt-1 items-center">
-                    <span class="text-[10px] ${category.color} text-white px-1.5 rounded bg-opacity-80 uppercase tracking-wide shadow-sm">${category.name}</span>
-                    ${task.dueDate ? `<span class="text-[10px] text-slate-400"><i class="fa-regular fa-clock"></i> ${task.dueDate}</span>` : ''}
-                </div>
-            `;
-            return div;
-        }
-
-        // --- ACTIONS (GLOBAL) ---
-        window.addNewTaskDirectly = async function(quadrant) {
-            if (quadrant === 'q1') {
-                const currentQ1 = localTasks.filter(t => t.matrixQuadrant === 'q1').length;
-                if (currentQ1 >= WIP_LIMIT) { showToast(`⚠️ Q1 Limiti Dolu!`); return; }
-            }
-            const text = prompt("Görev adı:");
-            if (!text) return;
-
-            const newTag = currentFilter !== 'all' ? currentFilter : 'genel';
-            
+        async function saveSettings(newSettings) {
             try {
-                await addDoc(collection(db, "artifacts", appId, "users", userId, "todos"), {
-                    text: text,
-                    completed: false,
-                    createdAt: serverTimestamp(),
-                    matrixQuadrant: quadrant,
-                    tag: newTag,
-                    listId: null // Matrix görevleri varsayılan olarak listesiz olabilir veya bir "Matrix" listesi oluşturulabilir
+                const settingsRef = doc(db, "artifacts", appId, "users", userId, "settings", "matrixConfig");
+                await setDoc(settingsRef, newSettings, { merge: true });
+            } catch (e) { showToast("Ayarlar kaydedilemedi: " + e.message); }
+        }
+
+        // --- ACTIONS ---
+        window.toggleTaskCompletion = async function(id, currentStatus) {
+            try {
+                await updateDoc(doc(db, "artifacts", appId, "users", userId, "todos", id), {
+                    completed: !currentStatus
                 });
-            } catch (e) {
-                showToast("Hata: " + e.message);
-            }
+            } catch (e) { showToast("Hata: " + e.message); }
         }
 
-        window.handleQuickAdd = async function(e) {
-            if(e.key === 'Enter') {
-                const val = e.target.value.trim();
-                if(val) {
-                    const newTag = currentFilter !== 'all' ? currentFilter : 'genel';
-                    try {
-                        await addDoc(collection(db, "artifacts", appId, "users", userId, "todos"), {
-                            text: val,
-                            completed: false,
-                            createdAt: serverTimestamp(),
-                            matrixQuadrant: null, // Havuza gider
-                            tag: newTag
-                        });
-                        e.target.value = '';
-                    } catch (err) { showToast("Hata: " + err.message); }
-                }
-            }
+        window.editWipLimit = function() {
+            const input = prompt("Acil & Önemli (Q1) Limiti:", wipLimit);
+            const newLimit = parseInt(input);
+            if (!isNaN(newLimit) && newLimit > 0) { saveSettings({ wipLimit: newLimit }); showToast(`🔥 Q1 Limiti güncelleniyor...`); }
         }
-
-        window.deleteTask = async function(id) {
-            if(!confirm('Silinsin mi?')) return;
-            try {
-                await deleteDoc(doc(db, "artifacts", appId, "users", userId, "todos", id));
-            } catch(e) { showToast("Silinemedi: " + e.message); }
-        }
-
-        window.cleanQ4 = async function() {
-            const tasksToDelete = localTasks.filter(t => t.matrixQuadrant === 'q4');
-            if(tasksToDelete.length === 0) return;
-            if(!confirm(`${tasksToDelete.length} adet önemsiz görevi silmek istediğine emin misin?`)) return;
-            
-            tasksToDelete.forEach(async (t) => {
-                await deleteDoc(doc(db, "artifacts", appId, "users", userId, "todos", t.id));
-            });
-            showToast("🧹 Q4 temizlendi.");
-        }
-
-        // --- DRAG & DROP (FIRESTORE UPDATE) ---
-        window.allowDrop = function(e) { e.preventDefault(); }
-        
-        window.drop = async function(e, targetQuadrant) {
-            e.preventDefault();
-            const taskId = e.dataTransfer.getData("text/plain");
-            if (!taskId) return;
-            
-            const realTarget = targetQuadrant === 'null' ? null : targetQuadrant;
-
-            // WIP Limit Kontrolü (Local State üzerinden hızlı kontrol)
-            if (realTarget === 'q1') {
-                const task = localTasks.find(t => t.id === taskId);
-                const currentQ1Count = localTasks.filter(t => t.matrixQuadrant === 'q1').length;
-                if (task && task.matrixQuadrant !== 'q1' && currentQ1Count >= WIP_LIMIT) {
-                    showToast(`⚠️ Dur Yolcu! Q1 Limiti (${WIP_LIMIT}) Doldu.`);
-                    return;
-                }
-            }
-
-            try {
-                const taskRef = doc(db, "artifacts", appId, "users", userId, "todos", taskId);
-                await updateDoc(taskRef, { matrixQuadrant: realTarget });
-            } catch (err) {
-                showToast("Taşıma başarısız: " + err.message);
-            }
-        }
-
-        // --- CATEGORY & FILTERS ---
-        window.renderFilters = function() {
-            const container = document.getElementById('category-filters');
-            container.innerHTML = '';
-            
-            // Tümü Butonu
-            const allBtn = document.createElement('button');
-            allBtn.className = `filter-btn px-3 py-1 text-xs rounded-md transition whitespace-nowrap ${currentFilter === 'all' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`;
-            allBtn.textContent = 'Tümü';
-            allBtn.onclick = () => { currentFilter = 'all'; renderFilters(); renderAll(); };
-            container.appendChild(allBtn);
-
-            categories.forEach(cat => {
-                const btn = document.createElement('button');
-                const isActive = currentFilter === cat.id;
-                const dot = `<span class="inline-block w-2 h-2 rounded-full mr-1.5 ${cat.color}"></span>`;
-                btn.className = `filter-btn px-3 py-1 text-xs rounded-md transition flex items-center whitespace-nowrap ${isActive ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`;
-                btn.innerHTML = `${dot}${cat.name}`;
-                btn.onclick = () => { currentFilter = cat.id; renderFilters(); renderAll(); };
-                container.appendChild(btn);
-            });
-
-            const addBtn = document.createElement('button');
-            addBtn.className = "px-2 py-1 text-xs text-slate-500 hover:text-slate-200 hover:bg-slate-700 rounded-md transition";
-            addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>';
-            addBtn.onclick = addNewCategory;
-            container.appendChild(addBtn);
-        }
-
         window.addNewCategory = function() {
             const name = prompt("Kategori adı:");
             if (!name || name.trim() === "") return;
             const id = name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '');
             const colors = ['bg-pink-600', 'bg-indigo-600', 'bg-orange-600', 'bg-teal-600', 'bg-cyan-600', 'bg-rose-600'];
             const randomColor = colors[Math.floor(Math.random() * colors.length)];
-            
-            categories.push({ id, name: name.trim(), color: randomColor });
-            localStorage.setItem('matrixCategories', JSON.stringify(categories)); // Kaydet
-            renderFilters();
-            showToast(`"${name}" eklendi.`);
+            const newCats = [...categories, { id, name: name.trim(), color: randomColor }];
+            saveSettings({ categories: newCats }); showToast(`"${name}" eklendi.`);
         }
-
-        // --- UTILS ---
-        window.toggleZenMode = function() {
-            isZenMode = !isZenMode;
-            document.body.classList.toggle('zen-mode', isZenMode);
-            const btn = document.getElementById('zenBtn');
-            const exitOverlay = document.getElementById('zenExitOverlay');
-            
-            if (isZenMode) {
-                btn.classList.add('bg-red-600', 'text-white', 'border-red-500');
-                btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> <span>Odaktan Çık</span>';
-                exitOverlay.classList.remove('hidden');
-                showToast("🧘 Odak Modu Açık");
-            } else {
-                btn.classList.remove('bg-red-600', 'text-white', 'border-red-500');
-                btn.innerHTML = '<i class="fa-solid fa-eye"></i> <span>Odak Modu</span>';
-                exitOverlay.classList.add('hidden');
-            }
-        }
-        
         window.editTitle = function(qId) {
-            // Basitlik için prompt kullanıyoruz, istenirse input'a çevrilebilir
             const current = document.getElementById(`title-${qId}`).innerText;
             const newVal = prompt("Bölüm İsmini Değiştir:", current);
-            if(newVal) {
-                document.getElementById(`title-${qId}`).innerText = newVal;
-                // İsimleri de localStorage'da tutabiliriz
-                let titles = JSON.parse(localStorage.getItem('matrixTitles')) || {};
-                titles[qId] = newVal;
-                localStorage.setItem('matrixTitles', JSON.stringify(titles));
+            if(newVal) { const newTitles = { ...titles, [qId]: newVal }; saveSettings({ titles: newTitles }); }
+        }
+
+        // --- RENDER ---
+        window.renderAll = function() {
+            document.getElementById('backlog-list').innerHTML = '';
+            ['q1', 'q2', 'q3', 'q4'].forEach(q => document.getElementById(`list-${q}`).innerHTML = '');
+
+            let filteredTasks = localTasks.filter(t => {
+                if (currentFilter === 'all') return true;
+                return (t.tag || 'genel') === currentFilter;
+            });
+
+            filteredTasks.sort((a, b) => {
+                if (currentSort === 'date-desc') return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
+                if (currentSort === 'date-asc') return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
+                if (currentSort === 'name-asc') return a.text.localeCompare(b.text);
+                if (currentSort === 'name-desc') return b.text.localeCompare(a.text);
+                return 0;
+            });
+
+            filteredTasks.forEach(task => {
+                const quadrant = task.matrixQuadrant || 'null';
+                const el = createTaskElement(task);
+                if (quadrant === 'null') { document.getElementById('backlog-list').appendChild(el); } 
+                else { const targetList = document.getElementById(`list-${quadrant}`); if (targetList) targetList.appendChild(el); }
+            });
+            updateCounts(); updateTitleTexts();
+        }
+
+        function updateTitleTexts() { Object.keys(titles).forEach(key => { const el = document.getElementById(`title-${key}`); if(el) el.textContent = titles[key]; }); }
+        
+        function getRottingClass(task) {
+            if (!task.createdAt || task.completed) return '';
+            const createdMs = task.createdAt.toMillis ? task.createdAt.toMillis() : (task.createdAt?.seconds * 1000 || Date.now());
+            const ageInDays = (Date.now() - createdMs) / (1000 * 60 * 60 * 24);
+            if (ageInDays > 7) return 'rotting-severe border-stone-600 opacity-80';
+            else if (ageInDays > 3) return 'rotting-mild border-stone-500';
+            return '';
+        }
+
+        function createTaskElement(task) {
+            const div = document.createElement('div');
+            const taskTag = task.tag || 'genel';
+            const category = categories.find(c => c.id === taskTag) || { name: taskTag, color: 'bg-gray-600' };
+            const rottingClass = getRottingClass(task);
+            const rottingIcon = rottingClass.includes('severe') ? '<i class="fa-solid fa-skull text-stone-500 mr-1"></i>' : '';
+
+            div.className = `bg-slate-700 p-3 rounded-lg shadow-sm border border-slate-600 cursor-grab active:cursor-grabbing hover:bg-slate-600 hover:border-slate-500 transition-all flex flex-col gap-1 group relative animate-[fadeIn_0.3s_ease-in-out] ${task.completed ? 'opacity-50 bg-slate-800' : ''} ${rottingClass}`;
+            div.draggable = true;
+            div.id = task.id;
+            
+            div.addEventListener('dragstart', (e) => { e.dataTransfer.setData("text/plain", task.id); e.target.classList.add('dragging'); });
+            div.addEventListener('dragend', (e) => { e.target.classList.remove('dragging'); });
+            
+            // YENİ: TAMAMLA BUTONU VE POMODORO
+            let focusBtn = '';
+            if ((task.matrixQuadrant === 'q1' || task.matrixQuadrant === 'q2') && !task.completed) {
+                focusBtn = `<button onclick="openPomodoroModal('${task.id}', '${task.text.replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-red-400 transition ml-2 p-1" title="Odaklan"><i class="fa-regular fa-clock"></i></button>`;
             }
+
+            // Tamamlama Butonu İkonu
+            const completeIconClass = task.completed ? "fa-solid fa-circle-check text-green-500" : "fa-regular fa-circle text-slate-500 hover:text-green-400";
+
+            div.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div class="flex items-start gap-3 flex-1 min-w-0">
+                        <button onclick="toggleTaskCompletion('${task.id}', ${task.completed})" class="mt-0.5 flex-shrink-0 transition transform active:scale-90">
+                            <i class="${completeIconClass} fa-lg"></i>
+                        </button>
+                        <span class="text-sm text-slate-200 leading-tight break-words ${task.completed ? 'line-through text-slate-500' : ''}">${rottingIcon}${task.text}</span>
+                    </div>
+                    <div class="flex items-center flex-shrink-0 ml-1">
+                        ${focusBtn}
+                        <button onclick="deleteTask('${task.id}')" class="text-slate-500 hover:text-red-400 opacity-100 md:opacity-0 group-hover:opacity-100 transition ml-2 p-1">✕</button>
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-2 items-center flex-wrap">
+                    <span class="text-[10px] ${category.color} text-white px-1.5 rounded bg-opacity-80 uppercase tracking-wide shadow-sm">${category.name}</span>
+                    ${task.dueDate ? `<span class="text-[10px] text-slate-400"><i class="fa-regular fa-calendar"></i> ${task.dueDate}</span>` : ''}
+                </div>
+            `;
+            return div;
+        }
+
+        // --- UTILS & FEATURES ---
+        window.openBrainDump = function() { document.getElementById('brainDumpModal').classList.remove('hidden'); document.getElementById('brainDumpInput').focus(); }
+        window.processBrainDump = async function() {
+            const input = document.getElementById('brainDumpInput');
+            const text = input.value.trim();
+            if (!text) { closeModal('brainDumpModal'); return; }
+            const lines = text.split('\n').filter(line => line.trim() !== '');
+            if (lines.length === 0) return;
+            const btn = document.getElementById('brainDumpBtn');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Kaydediliyor...'; btn.disabled = true;
+            const batch = writeBatch(db);
+            const newTag = currentFilter !== 'all' ? currentFilter : 'genel';
+            lines.forEach(line => {
+                const docRef = doc(collection(db, "artifacts", appId, "users", userId, "todos"));
+                batch.set(docRef, { text: line.trim(), completed: false, createdAt: serverTimestamp(), matrixQuadrant: null, tag: newTag });
+            });
+            try { await batch.commit(); input.value = ''; closeModal('brainDumpModal'); showToast(`🚀 ${lines.length} görev eklendi!`); } 
+            catch (e) { showToast("Hata: " + e.message); } finally { btn.innerHTML = 'Havuza Gönder 🚀'; btn.disabled = false; }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                ['pomodoroModal', 'insightsModal', 'shortcutsModal', 'brainDumpModal'].forEach(id => { if (!document.getElementById(id).classList.contains('hidden')) closeModal(id); });
+                if (!document.getElementById('focusOverlay').classList.contains('hidden')) closeFocus();
+                return;
+            }
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.shiftKey && e.key.toLowerCase() === 'n') { e.preventDefault(); document.getElementById('quickTaskInput').focus(); }
+            if (e.shiftKey && e.key.toLowerCase() === 'b') { e.preventDefault(); openBrainDump(); }
+            if (e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); toggleZenMode(); }
+            if (e.shiftKey && e.key === '?') { e.preventDefault(); document.getElementById('shortcutsModal').classList.remove('hidden'); }
+        });
+
+        window.changeSort = function(val) { currentSort = val; renderAll(); }
+        
+        let currentTaskName = ""; let focusTime = 25 * 60;
+        window.openPomodoroModal = function(id, text) { currentTaskName = text; document.getElementById('pomodoroModal').classList.remove('hidden'); document.getElementById('pomoTaskTitle').textContent = text; document.getElementById('pomoInput').value = 25; }
+        window.startFocus = function() {
+            const mins = parseInt(document.getElementById('pomoInput').value) || 25;
+            focusTime = mins * 60;
+            document.getElementById('pomodoroModal').classList.add('hidden'); document.getElementById('focusOverlay').classList.remove('hidden'); document.getElementById('focusTaskName').textContent = currentTaskName;
+            updateTimerDisplay();
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                focusTime--; updateTimerDisplay();
+                if (focusTime <= 0) { clearInterval(timerInterval); new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play().catch(()=>{}); alert("Süre Doldu!"); closeFocus(); }
+            }, 1000);
+        }
+        function updateTimerDisplay() { const m = Math.floor(focusTime / 60).toString().padStart(2, '0'); const s = (focusTime % 60).toString().padStart(2, '0'); document.getElementById('timerDisplay').textContent = `${m}:${s}`; document.title = `${m}:${s} - Odaklan`; }
+        window.closeFocus = function() { clearInterval(timerInterval); document.getElementById('focusOverlay').classList.add('hidden'); document.title = "Komuta Merkezi"; }
+        window.closeModal = function(id) { document.getElementById(id).classList.add('hidden'); }
+
+        window.openInsights = function() {
+            document.getElementById('insightsModal').classList.remove('hidden');
+            const total = localTasks.length; const completed = localTasks.filter(t => t.completed).length; const rate = total === 0 ? 0 : Math.round((completed / total) * 100);
+            const q1Count = localTasks.filter(t => t.matrixQuadrant === 'q1').length; const q2Count = localTasks.filter(t => t.matrixQuadrant === 'q2').length; const q3Count = localTasks.filter(t => t.matrixQuadrant === 'q3').length; const q4Count = localTasks.filter(t => t.matrixQuadrant === 'q4').length;
+            const max = Math.max(q1Count, q2Count, q3Count, q4Count, 1);
+            document.getElementById('statCompleted').textContent = `%${rate}`; document.getElementById('statTotal').textContent = total;
+            setBar('barQ1', q1Count, max); setBar('barQ2', q2Count, max); setBar('barQ3', q3Count, max); setBar('barQ4', q4Count, max);
+            document.getElementById('valQ1').textContent = q1Count; document.getElementById('valQ2').textContent = q2Count; document.getElementById('valQ3').textContent = q3Count; document.getElementById('valQ4').textContent = q4Count;
+        }
+        function setBar(id, val, max) { document.getElementById(id).style.width = `${(val / max) * 100}%`; }
+
+        window.addNewTaskDirectly = async function(quadrant) {
+            if (quadrant === 'q1') { const currentQ1 = localTasks.filter(t => t.matrixQuadrant === 'q1').length; if (currentQ1 >= wipLimit) { showToast(`⚠️ Q1 Limiti (${wipLimit}) Dolu!`); return; } }
+            const text = prompt("Görev adı:"); if (!text) return;
+            const newTag = currentFilter !== 'all' ? currentFilter : 'genel';
+            try { await addDoc(collection(db, "artifacts", appId, "users", userId, "todos"), { text: text, completed: false, createdAt: serverTimestamp(), matrixQuadrant: quadrant, tag: newTag }); } catch (e) { showToast("Hata: " + e.message); }
+        }
+        window.deleteTask = async function(id) { if(!confirm('Silinsin mi?')) return; try { await deleteDoc(doc(db, "artifacts", appId, "users", userId, "todos", id)); } catch(e) { showToast("Silinemedi: " + e.message); } }
+        window.cleanQ4 = async function() {
+            const tasksToDelete = localTasks.filter(t => t.matrixQuadrant === 'q4'); if(tasksToDelete.length === 0) return; if(!confirm(`${tasksToDelete.length} adet önemsiz görevi silmek istediğine emin misin?`)) return;
+            tasksToDelete.forEach(async (t) => { await deleteDoc(doc(db, "artifacts", appId, "users", userId, "todos", t.id)); }); showToast("🧹 Q4 temizlendi.");
+        }
+        window.drop = async function(e, targetQuadrant) {
+            e.preventDefault(); const taskId = e.dataTransfer.getData("text/plain"); if (!taskId) return; const realTarget = targetQuadrant === 'null' ? null : targetQuadrant;
+            if (realTarget === 'q1') { const task = localTasks.find(t => t.id === taskId); const currentQ1Count = localTasks.filter(t => t.matrixQuadrant === 'q1').length; if (task && task.matrixQuadrant !== 'q1' && currentQ1Count >= wipLimit) { showToast(`⚠️ Q1 Limiti (${wipLimit}) Dolu.`); return; } }
+            try { await updateDoc(doc(db, "artifacts", appId, "users", userId, "todos", taskId), { matrixQuadrant: realTarget }); } catch (err) { showToast("Hata: " + err.message); }
+        }
+        window.allowDrop = function(e) { e.preventDefault(); }
+        window.handleQuickAdd = async function(e) {
+            if(e.key === 'Enter') { const val = e.target.value.trim(); if(val) { const newTag = currentFilter !== 'all' ? currentFilter : 'genel'; try { await addDoc(collection(db, "artifacts", appId, "users", userId, "todos"), { text: val, completed: false, createdAt: serverTimestamp(), matrixQuadrant: null, tag: newTag }); e.target.value = ''; } catch (err) { showToast("Hata: " + err.message); } } }
+        }
+
+        window.renderFilters = function() {
+            const container = document.getElementById('category-filters'); container.innerHTML = '';
+            const allBtn = document.createElement('button'); allBtn.className = `filter-btn px-3 py-1 text-xs rounded-md transition whitespace-nowrap ${currentFilter === 'all' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`; allBtn.textContent = 'Tümü'; allBtn.onclick = () => { currentFilter = 'all'; renderFilters(); renderAll(); }; container.appendChild(allBtn);
+            categories.forEach(cat => {
+                const btn = document.createElement('button'); const isActive = currentFilter === cat.id; const dot = `<span class="inline-block w-2 h-2 rounded-full mr-1.5 ${cat.color}"></span>`;
+                btn.className = `filter-btn px-3 py-1 text-xs rounded-md transition flex items-center whitespace-nowrap ${isActive ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`; btn.innerHTML = `${dot}${cat.name}`; btn.onclick = () => { currentFilter = cat.id; renderFilters(); renderAll(); }; container.appendChild(btn);
+            });
+            const addBtn = document.createElement('button'); addBtn.className = "px-2 py-1 text-xs text-slate-500 hover:text-slate-200 hover:bg-slate-700 rounded-md transition"; addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>'; addBtn.onclick = addNewCategory; container.appendChild(addBtn);
+        }
+
+        window.toggleZenMode = function() {
+            isZenMode = !isZenMode; document.body.classList.toggle('zen-mode', isZenMode); const btn = document.getElementById('zenBtn'); const exitOverlay = document.getElementById('zenExitOverlay');
+            if (isZenMode) { btn.classList.add('bg-red-600', 'text-white', 'border-red-500'); btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i> <span class="hidden md:inline">Odaktan Çık</span>'; exitOverlay.classList.remove('hidden'); } 
+            else { btn.classList.remove('bg-red-600', 'text-white', 'border-red-500'); btn.innerHTML = '<i class="fa-solid fa-eye"></i> <span class="hidden md:inline">Odak</span>'; exitOverlay.classList.add('hidden'); }
         }
         
         function updateCounts() {
             ['q1', 'q2', 'q3', 'q4'].forEach(q => {
                 const count = localTasks.filter(t => (t.matrixQuadrant === q) && (currentFilter === 'all' || t.tag === currentFilter)).length;
                 if(q === 'q1') {
-                    const wipEl = document.getElementById('wip-badge');
-                    wipEl.textContent = `${count}/${WIP_LIMIT}`;
-                    wipEl.className = count >= WIP_LIMIT ? "text-xs font-bold bg-red-600 text-white px-2 py-0.5 rounded-full border border-red-400 shadow-lg animate-pulse" : "text-xs font-bold bg-red-900 text-red-200 px-2 py-0.5 rounded-full border border-red-700";
-                } else {
-                    const badge = document.querySelector(`#q${q.charAt(1)}-container .count-badge`) || document.querySelector(`.quadrant[ondrop="drop(event, '${q}')"] .count-badge`);
-                    if(badge) badge.textContent = count;
-                }
-            });
-            
-            // Başlıkları LocalStorage'dan yükle
-            let titles = JSON.parse(localStorage.getItem('matrixTitles')) || {};
-            Object.keys(titles).forEach(key => {
-                const el = document.getElementById(`title-${key}`);
-                if(el) el.textContent = titles[key];
+                    const wipEl = document.getElementById('wip-badge'); wipEl.textContent = `${count}/${wipLimit}`; wipEl.className = count >= wipLimit ? "text-xs font-bold bg-red-600 text-white px-2 py-0.5 rounded-full border border-red-400 shadow-lg animate-pulse cursor-pointer hover:bg-red-700" : "text-xs font-bold bg-red-900 text-red-200 px-2 py-0.5 rounded-full border border-red-700 cursor-pointer hover:bg-red-800"; wipEl.title = "Limiti değiştirmek için tıkla"; wipEl.onclick = editWipLimit;
+                } else { const badge = document.querySelector(`#q${q.charAt(1)}-container .count-badge`) || document.querySelector(`.quadrant[ondrop="drop(event, '${q}')"] .count-badge`); if(badge) badge.textContent = count; }
             });
         }
-
-        window.showToast = function(msg) {
-            const toast = document.getElementById('toast');
-            document.getElementById('toastMsg').textContent = msg;
-            toast.classList.remove('translate-y-20', 'opacity-0');
-            setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 3000);
-        }
         
-        window.resetData = function() { window.location.reload(); }
-        
-        // --- GEMINI AI SIMULATION (Gerçek API yerine basit anahtar kelime) ---
         window.runGeminiAI = function() {
-            const btn = document.getElementById('geminiBtn');
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> İşleniyor...';
-            btn.classList.add('gemini-working');
-            
-            // Havuzdaki görevleri al
+            const btn = document.getElementById('geminiBtn'); btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> İşleniyor...'; btn.classList.add('gemini-working');
             const backlogTasks = localTasks.filter(t => !t.matrixQuadrant);
-            if(backlogTasks.length === 0) {
-                 showToast("Havuz boş.");
-                 btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> AI Dağıt';
-                 btn.classList.remove('gemini-working');
-                 return;
-            }
-
-            // Basit kural tabanlı dağıtım (Simülasyon)
-            // Gerçek entegrasyon için `index.html`deki callGeminiAPI fonksiyonunu buraya taşıman gerekir.
+            if(backlogTasks.length === 0) { showToast("Havuz boş."); btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> AI Dağıt'; btn.classList.remove('gemini-working'); return; }
             setTimeout(() => {
                 backlogTasks.forEach(async t => {
-                    let target = 'q2'; // Varsayılan: Planla
-                    const txt = t.text.toLowerCase();
-                    if(txt.includes('acil') || txt.includes('önemli') || txt.includes('!')) target = 'q1';
-                    else if(txt.includes('sil') || txt.includes('boş') || txt.includes('gereksiz')) target = 'q4';
-                    else if(txt.includes('belki') || txt.includes('sonra')) target = 'q3';
-                    
+                    let target = 'q2'; const txt = t.text.toLowerCase();
+                    if(txt.includes('acil') || txt.includes('önemli')) target = 'q1'; else if(txt.includes('sil') || txt.includes('boş')) target = 'q4'; else if(txt.includes('belki')) target = 'q3';
                     await updateDoc(doc(db, "artifacts", appId, "users", userId, "todos", t.id), { matrixQuadrant: target });
                 });
-                btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> AI Dağıt';
-                btn.classList.remove('gemini-working');
-                showToast("Görevler otomatik dağıtıldı.");
+                btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> AI Dağıt'; btn.classList.remove('gemini-working'); showToast("Dağıtıldı.");
             }, 1500);
         }
 
+        window.showToast = function(msg) { const toast = document.getElementById('toast'); document.getElementById('toastMsg').textContent = msg; toast.classList.remove('translate-y-20', 'opacity-0'); setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 3000); }
+        window.resetData = function() { window.location.reload(); }
     </script>
 
     <style>
@@ -366,71 +333,95 @@
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
         ::-webkit-scrollbar-track { background: transparent; }
 
-        /* ZEN MODE */
         body.zen-mode .non-focus-area { opacity: 0.1; filter: blur(4px); pointer-events: none; transition: all 0.5s ease; }
         body.zen-mode .focus-area { transform: scale(1.02); z-index: 50; box-shadow: 0 0 50px rgba(220, 38, 38, 0.2); border-color: #ef4444; }
+        
+        .rotting-mild { background-color: #3f3a3a !important; }
+        .rotting-severe { background-color: #292524 !important; }
+
         @keyframes pulse-border { 0% { border-color: #3b82f6; } 50% { border-color: #8b5cf6; } 100% { border-color: #3b82f6; } }
         .gemini-working { animation: pulse-border 2s infinite; }
+        .kbd-key { background: #1e293b; border: 1px solid #475569; border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 0.8rem; color: #cbd5e1; }
     </style>
 </head>
-<body class="bg-gray-900 h-screen flex flex-col p-4 text-gray-200 overflow-hidden">
+<body class="bg-gray-900 min-h-screen flex flex-col text-gray-200 overflow-y-auto md:overflow-hidden">
 
     <div id="authLoading" class="fixed inset-0 flex items-center justify-center bg-gray-900 z-50">
         <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
     </div>
 
-    <div id="appContent" class="flex flex-col h-full hidden">
-        <header class="flex justify-between items-center mb-4 px-2 shrink-0 non-focus-area transition-opacity duration-300">
-            <div class="flex items-center gap-4 overflow-x-auto pb-1 w-full mr-4">
-                <div class="flex items-center gap-2">
+    <div id="appContent" class="flex flex-col h-full hidden p-4">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 shrink-0 non-focus-area transition-opacity duration-300">
+            <div class="flex items-center gap-4 overflow-x-auto pb-1 w-full md:w-auto no-scrollbar">
+                <div class="flex items-center gap-2 shrink-0">
                     <a href="index.html" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-arrow-left"></i></a>
                     <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300 whitespace-nowrap">
                         Komuta Merkezi
                     </h1>
                 </div>
-                
                 <div id="category-filters" class="flex bg-slate-800 rounded-lg p-1 gap-1 items-center"></div>
             </div>
 
-            <div class="flex items-center gap-3 shrink-0">
+            <div class="flex items-center gap-3 w-full md:w-auto justify-end shrink-0">
+                <button onclick="document.getElementById('shortcutsModal').classList.remove('hidden')" class="text-slate-500 hover:text-white transition hidden md:block" title="Kısayollar">
+                    <i class="fa-solid fa-keyboard fa-lg"></i>
+                </button>
+
+                <div class="relative group hidden md:block">
+                    <select onchange="changeSort(this.value)" class="appearance-none bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm rounded-lg border border-slate-700 px-3 py-1.5 pr-8 focus:outline-none cursor-pointer transition-all">
+                        <option value="date-desc">▼ En Yeni</option>
+                        <option value="date-asc">▲ En Eski</option>
+                        <option value="name-asc">A-Z</option>
+                        <option value="name-desc">Z-A</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                        <i class="fa-solid fa-sort text-xs"></i>
+                    </div>
+                </div>
+
+                <button onclick="openInsights()" class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded-lg border border-slate-700 transition-all text-sm whitespace-nowrap">
+                    <i class="fa-solid fa-chart-simple"></i> <span class="hidden md:inline">Analiz</span>
+                </button>
+                
                 <button onclick="toggleZenMode()" id="zenBtn" class="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-all text-sm whitespace-nowrap">
-                    <i class="fa-solid fa-eye"></i> <span>Odak Modu</span>
+                    <i class="fa-solid fa-eye"></i> <span class="hidden md:inline">Odak</span>
                 </button>
             </div>
         </header>
 
-        <div class="flex flex-1 gap-4 overflow-hidden relative">
+        <div class="flex flex-col md:flex-row flex-1 gap-4 relative">
             
-            <aside class="w-1/4 bg-slate-800 rounded-xl shadow-lg flex flex-col border border-slate-700 non-focus-area transition-all duration-500">
-                <div class="p-4 border-b border-slate-700 flex justify-between items-center">
-                    <div>
-                        <h2 class="font-semibold text-lg text-slate-200">Havuz</h2>
-                        <p class="text-xs text-slate-400">Atanmamışlar</p>
+            <aside class="w-full md:w-1/4 bg-slate-800 rounded-xl shadow-lg flex flex-col border border-slate-700 non-focus-area transition-all duration-500 md:h-full order-1 shrink-0 max-h-[35vh] md:max-h-full">
+                <div class="p-4 border-b border-slate-700 flex flex-col gap-2">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h2 class="font-semibold text-lg text-slate-200">Havuz</h2>
+                            <p class="text-xs text-slate-400">Atanmamışlar</p>
+                        </div>
+                        <button onclick="openBrainDump()" class="text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-1 rounded transition" title="Çoklu Ekleme">
+                            <i class="fa-solid fa-brain"></i> Toplu
+                        </button>
                     </div>
-                    <button onclick="runGeminiAI()" id="geminiBtn" class="text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-2 py-1 rounded flex items-center gap-1 shadow-lg transition-all transform hover:scale-105">
+                    <button onclick="runGeminiAI()" id="geminiBtn" class="w-full text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white px-2 py-1.5 rounded flex items-center justify-center gap-1 shadow-lg transition-all transform hover:scale-[1.02]">
                         <i class="fa-solid fa-wand-magic-sparkles"></i> AI Dağıt
                     </button>
                 </div>
-                
                 <div class="p-2 border-b border-slate-700 bg-slate-900/50">
-                    <input type="text" id="quickTaskInput" placeholder="Hızlı görev ekle + Enter" 
+                    <input type="text" id="quickTaskInput" placeholder="Hızlı ekle (Enter)" 
                            class="w-full bg-transparent text-sm text-white px-2 py-1 outline-none"
                            onkeypress="handleQuickAdd(event)">
                 </div>
-
                 <div id="backlog-list" class="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-900/30" 
                      ondragover="allowDrop(event)" ondrop="drop(event, 'null')"></div>
             </aside>
 
-            <main class="flex-1 grid grid-cols-2 grid-rows-2 gap-4 h-full transition-all duration-500">
-                
-                <div id="q1-container" class="quadrant focus-area bg-red-900/10 border border-red-900/50 rounded-xl flex flex-col relative transition-all duration-500"
-                     ondragover="allowDrop(event)" ondrop="drop(event, 'q1')">
+            <main class="flex-1 order-2 grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-4 transition-all duration-500 pb-20 md:pb-0 md:h-full">
+                <div id="q1-container" class="quadrant focus-area bg-red-900/10 border border-red-900/50 rounded-xl flex flex-col relative transition-all duration-500 min-h-[300px] md:min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q1')">
                     <div class="p-3 flex justify-between items-center border-b border-red-900/30 bg-red-900/20 rounded-t-xl">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-red-500 animate-pulse">🚨</span>
                             <h3 id="title-q1" class="font-bold text-red-400 cursor-pointer" onclick="editTitle('q1')">Acil & Önemli</h3>
-                            <span id="wip-badge" class="text-xs font-bold bg-red-900 text-red-200 px-2 py-0.5 rounded-full border border-red-700">0/3</span>
+                            <span id="wip-badge" class="text-xs font-bold bg-red-900 text-red-200 px-2 py-0.5 rounded-full border border-red-700 cursor-pointer hover:bg-red-800 transition">0/3</span>
                         </div>
                         <button onclick="addNewTaskDirectly('q1')" class="text-red-400 hover:bg-red-900/50 w-6 h-6 rounded">+</button>
                     </div>
@@ -440,8 +431,7 @@
                     </div>
                 </div>
 
-                <div id="q2-container" class="quadrant non-focus-area bg-blue-900/10 border border-blue-900/50 rounded-xl flex flex-col transition-all duration-500"
-                     ondragover="allowDrop(event)" ondrop="drop(event, 'q2')">
+                <div id="q2-container" class="quadrant non-focus-area bg-blue-900/10 border border-blue-900/50 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q2')">
                     <div class="p-3 flex justify-between items-center border-b border-blue-900/30 bg-blue-900/20 rounded-t-xl">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-blue-500">📅</span>
@@ -453,8 +443,7 @@
                     <div id="list-q2" class="flex-1 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
 
-                <div id="q3-container" class="quadrant non-focus-area bg-yellow-900/10 border border-yellow-900/50 rounded-xl flex flex-col transition-all duration-500"
-                     ondragover="allowDrop(event)" ondrop="drop(event, 'q3')">
+                <div id="q3-container" class="quadrant non-focus-area bg-yellow-900/10 border border-yellow-900/50 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q3')">
                     <div class="p-3 flex justify-between items-center border-b border-yellow-900/30 bg-yellow-900/20 rounded-t-xl">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-yellow-500">⚡</span>
@@ -466,8 +455,7 @@
                     <div id="list-q3" class="flex-1 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
 
-                <div id="q4-container" class="quadrant non-focus-area bg-gray-800/30 border border-gray-700 rounded-xl flex flex-col transition-all duration-500"
-                     ondragover="allowDrop(event)" ondrop="drop(event, 'q4')">
+                <div id="q4-container" class="quadrant non-focus-area bg-gray-800/30 border border-gray-700 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q4')">
                     <div class="p-3 flex justify-between items-center border-b border-gray-700 bg-gray-800/50 rounded-t-xl">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-gray-500">🗑️</span>
@@ -480,8 +468,99 @@
                     </div>
                     <div id="list-q4" class="flex-1 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
-
             </main>
+        </div>
+    </div>
+
+    <div id="brainDumpModal" class="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-sm flex items-center justify-center hidden z-[60]">
+        <div class="bg-slate-800 p-6 rounded-xl shadow-2xl border border-slate-600 w-full max-w-2xl flex flex-col h-[80vh]">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-white flex items-center gap-2"><i class="fa-solid fa-brain text-purple-400"></i> Beyin Boşaltma Modu</h3>
+                <button onclick="closeModal('brainDumpModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark fa-lg"></i></button>
+            </div>
+            <p class="text-sm text-slate-400 mb-3">Aklındaki her şeyi alt alta yaz. Hepsini tek seferde havuza atacağız.</p>
+            <textarea id="brainDumpInput" class="flex-1 bg-slate-900/50 border border-slate-700 rounded-lg p-4 text-slate-200 focus:outline-none focus:border-blue-500 resize-none mb-4 font-mono text-sm leading-relaxed" placeholder="- Proje raporunu bitir&#10;- Dişçi randevusu al&#10;- Markete git..."></textarea>
+            <button onclick="processBrainDump()" id="brainDumpBtn" class="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold transition text-lg shadow-lg">Havuza Gönder 🚀</button>
+        </div>
+    </div>
+
+    <div id="shortcutsModal" class="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-sm flex items-center justify-center hidden z-[70]">
+        <div class="bg-slate-800 p-6 rounded-xl shadow-2xl border border-slate-600 w-full max-w-sm">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-lg font-bold text-white">Klavye Kısayolları</h3>
+                <button onclick="closeModal('shortcutsModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="space-y-3">
+                <div class="flex justify-between text-sm text-slate-300"><span>Hızlı Ekleme</span> <span class="kbd-key">Shift + N</span></div>
+                <div class="flex justify-between text-sm text-slate-300"><span>Beyin Boşaltma</span> <span class="kbd-key">Shift + B</span></div>
+                <div class="flex justify-between text-sm text-slate-300"><span>Odak (Zen) Modu</span> <span class="kbd-key">Shift + Z</span></div>
+                <div class="flex justify-between text-sm text-slate-300"><span>Kısayollar</span> <span class="kbd-key">Shift + ?</span></div>
+                <div class="flex justify-between text-sm text-slate-300"><span>Pencereyi Kapat</span> <span class="kbd-key">Esc</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="pomodoroModal" class="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-800 p-6 rounded-xl shadow-2xl border border-slate-600 w-80 text-center">
+            <h3 class="text-xl font-bold text-white mb-1">Odak Zamanı</h3>
+            <p id="pomoTaskTitle" class="text-sm text-slate-400 mb-4 truncate">Görev Adı</p>
+            <div class="flex justify-center items-center gap-2 mb-6">
+                <input type="number" id="pomoInput" value="25" class="w-16 bg-slate-700 border border-slate-500 rounded p-2 text-center text-white text-lg" min="1" max="120">
+                <span class="text-slate-400">dakika</span>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeModal('pomodoroModal')" class="flex-1 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition">İptal</button>
+                <button onclick="startFocus()" class="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition">Başla 🚀</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="focusOverlay" class="fixed inset-0 bg-gray-900 flex flex-col items-center justify-center z-[100] hidden">
+        <h2 class="text-slate-400 text-lg tracking-widest uppercase mb-4">Şu an odaklanıyorsun</h2>
+        <h1 id="timerDisplay" class="text-9xl font-bold text-white font-mono mb-4 tabular-nums">25:00</h1>
+        <p id="focusTaskName" class="text-xl text-blue-400 font-semibold mb-12 max-w-2xl text-center px-4"></p>
+        <button onclick="closeFocus()" class="px-8 py-3 rounded-full border border-red-500 text-red-500 hover:bg-red-500 hover:text-white transition uppercase tracking-wider text-sm font-bold">Pes Et / Bitir</button>
+    </div>
+
+    <div id="insightsModal" class="fixed inset-0 bg-black bg-opacity-70 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-slate-800 p-6 rounded-xl shadow-2xl border border-slate-600 w-full max-w-md">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-white">Haftalık Rapor</h3>
+                <button onclick="closeModal('insightsModal')" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark fa-lg"></i></button>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mb-6">
+                <div class="bg-slate-700/50 p-4 rounded-lg text-center">
+                    <div id="statTotal" class="text-2xl font-bold text-white">0</div>
+                    <div class="text-xs text-slate-400">Toplam Görev</div>
+                </div>
+                <div class="bg-slate-700/50 p-4 rounded-lg text-center">
+                    <div id="statCompleted" class="text-2xl font-bold text-green-400">%0</div>
+                    <div class="text-xs text-slate-400">Tamamlanma Oranı</div>
+                </div>
+            </div>
+            <h4 class="text-sm text-slate-400 mb-3 uppercase tracking-wider font-semibold">Bölge Dağılımı</h4>
+            <div class="space-y-3">
+                <div class="flex items-center gap-3">
+                    <span class="text-xs w-6 text-slate-400">Q1</span>
+                    <div class="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden"><div id="barQ1" class="h-full bg-red-500 rounded-full" style="width: 0%"></div></div>
+                    <span id="valQ1" class="text-xs w-6 text-right text-white">0</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs w-6 text-slate-400">Q2</span>
+                    <div class="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden"><div id="barQ2" class="h-full bg-blue-500 rounded-full" style="width: 0%"></div></div>
+                    <span id="valQ2" class="text-xs w-6 text-right text-white">0</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs w-6 text-slate-400">Q3</span>
+                    <div class="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden"><div id="barQ3" class="h-full bg-yellow-500 rounded-full" style="width: 0%"></div></div>
+                    <span id="valQ3" class="text-xs w-6 text-right text-white">0</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs w-6 text-slate-400">Q4</span>
+                    <div class="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden"><div id="barQ4" class="h-full bg-gray-500 rounded-full" style="width: 0%"></div></div>
+                    <span id="valQ4" class="text-xs w-6 text-right text-white">0</span>
+                </div>
+            </div>
         </div>
     </div>
 
