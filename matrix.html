@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Eisenhower Matrisi v6.4 - Cleaner</title>
+    <title>Eisenhower Matrisi v6.8 - Page Scroll</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -89,38 +89,16 @@
         }
 
         // --- ACTIONS ---
-        
-        // YENİ: GENEL TEMİZLEME FONKSİYONU
         window.clearQuadrant = async function(qId) {
-            // 1. O kutudaki görevleri bul
             let tasksToDelete = localTasks.filter(t => t.matrixQuadrant === qId);
-            
-            // 2. Eğer bir filtre (etiket) seçiliyse SADECE O ETİKETİ sil
             if (currentFilter !== 'all') {
                 tasksToDelete = tasksToDelete.filter(t => (t.tag || 'genel') === currentFilter);
             }
-
-            if (tasksToDelete.length === 0) {
-                showToast("Silinecek görev bulunamadı.");
-                return;
-            }
-
-            const filterMsg = currentFilter !== 'all' ? `(${currentFilter})` : '';
-            
-            if(!confirm(`${titles[qId]} bölümündeki ${tasksToDelete.length} görevi ${filterMsg} silmek istediğine emin misin?`)) return;
-
-            // 3. Toplu Silme (Batch)
+            if (tasksToDelete.length === 0) { showToast("Silinecek görev yok."); return; }
+            if(!confirm(`${titles[qId]} bölümündeki ${tasksToDelete.length} görevi silmek istediğine emin misin?`)) return;
             const batch = writeBatch(db);
-            tasksToDelete.forEach(t => {
-                batch.delete(doc(db, "artifacts", appId, "users", userId, "todos", t.id));
-            });
-
-            try {
-                await batch.commit();
-                showToast(`🧹 ${titles[qId]} temizlendi.`);
-            } catch (e) {
-                showToast("Hata: " + e.message);
-            }
+            tasksToDelete.forEach(t => { batch.delete(doc(db, "artifacts", appId, "users", userId, "todos", t.id)); });
+            try { await batch.commit(); showToast(`🧹 ${titles[qId]} temizlendi.`); } catch (e) { showToast("Hata: " + e.message); }
         }
 
         window.toggleTaskCompletion = async function(id, currentStatus) {
@@ -193,7 +171,7 @@
             const rottingClass = getRottingClass(task);
             const rottingIcon = rottingClass.includes('severe') ? '<i class="fa-solid fa-skull text-stone-500 mr-1"></i>' : '';
 
-            div.className = `bg-slate-700 p-3 rounded-lg shadow-sm border border-slate-600 cursor-grab active:cursor-grabbing hover:bg-slate-600 hover:border-slate-500 transition-all flex flex-col gap-1 group relative animate-[fadeIn_0.3s_ease-in-out] ${task.completed ? 'opacity-50 bg-slate-800' : ''} ${rottingClass}`;
+            div.className = `bg-slate-700 p-3 rounded-lg shadow-sm border border-slate-600 cursor-grab active:cursor-grabbing hover:bg-slate-600 hover:border-slate-500 transition-all flex flex-col gap-1 group relative animate-[fadeIn_0.3s_ease-in-out] w-full ${task.completed ? 'opacity-50 bg-slate-800' : ''} ${rottingClass}`;
             div.draggable = true;
             div.id = task.id;
             
@@ -208,12 +186,12 @@
             const completeIconClass = task.completed ? "fa-solid fa-circle-check text-green-500" : "fa-regular fa-circle text-slate-500 hover:text-green-400";
 
             div.innerHTML = `
-                <div class="flex justify-between items-start">
+                <div class="flex justify-between items-start w-full">
                     <div class="flex items-start gap-3 flex-1 min-w-0">
                         <button onclick="toggleTaskCompletion('${task.id}', ${task.completed})" class="mt-0.5 flex-shrink-0 transition transform active:scale-90">
                             <i class="${completeIconClass} fa-lg"></i>
                         </button>
-                        <span class="text-sm text-slate-200 leading-tight break-words ${task.completed ? 'line-through text-slate-500' : ''}">${rottingIcon}${task.text}</span>
+                        <span class="text-sm text-slate-200 leading-tight break-words break-all ${task.completed ? 'line-through text-slate-500' : ''}">${rottingIcon}${task.text}</span>
                     </div>
                     <div class="flex items-center flex-shrink-0 ml-1">
                         ${focusBtn}
@@ -297,7 +275,6 @@
             try { await addDoc(collection(db, "artifacts", appId, "users", userId, "todos"), { text: text, completed: false, createdAt: serverTimestamp(), matrixQuadrant: quadrant, tag: newTag }); } catch (e) { showToast("Hata: " + e.message); }
         }
         window.deleteTask = async function(id) { if(!confirm('Silinsin mi?')) return; try { await deleteDoc(doc(db, "artifacts", appId, "users", userId, "todos", id)); } catch(e) { showToast("Silinemedi: " + e.message); } }
-        
         window.drop = async function(e, targetQuadrant) {
             e.preventDefault(); const taskId = e.dataTransfer.getData("text/plain"); if (!taskId) return; const realTarget = targetQuadrant === 'null' ? null : targetQuadrant;
             if (realTarget === 'q1') { const task = localTasks.find(t => t.id === taskId); const currentQ1Count = localTasks.filter(t => t.matrixQuadrant === 'q1').length; if (task && task.matrixQuadrant !== 'q1' && currentQ1Count >= wipLimit) { showToast(`⚠️ Q1 Limiti (${wipLimit}) Dolu.`); return; } }
@@ -369,14 +346,14 @@
         .kbd-key { background: #1e293b; border: 1px solid #475569; border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 0.8rem; color: #cbd5e1; }
     </style>
 </head>
-<body class="bg-gray-900 min-h-screen flex flex-col text-gray-200 overflow-y-auto md:overflow-hidden">
+<body class="bg-gray-900 min-h-screen flex flex-col text-gray-200 overflow-y-auto">
 
     <div id="authLoading" class="fixed inset-0 flex items-center justify-center bg-gray-900 z-50">
         <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
     </div>
 
-    <div id="appContent" class="flex flex-col h-full hidden p-4">
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 shrink-0 non-focus-area transition-opacity duration-300">
+    <div id="appContent" class="flex flex-col min-h-screen hidden p-4 max-w-[1920px] mx-auto w-full">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0 non-focus-area transition-opacity duration-300">
             <div class="flex items-center gap-4 overflow-x-auto pb-1 w-full md:w-auto no-scrollbar">
                 <div class="flex items-center gap-2 shrink-0">
                     <a href="index.html" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-arrow-left"></i></a>
@@ -414,9 +391,9 @@
             </div>
         </header>
 
-        <div class="flex flex-col md:flex-row flex-1 gap-4 relative">
+        <div class="flex flex-col md:flex-row flex-1 gap-6 relative">
             
-            <aside class="w-full md:w-1/4 bg-slate-800 rounded-xl shadow-lg flex flex-col border border-slate-700 non-focus-area transition-all duration-500 md:h-full order-1 shrink-0 max-h-[35vh] md:max-h-full">
+            <aside class="w-full md:w-1/4 md:sticky md:top-4 bg-slate-800 rounded-xl shadow-lg flex flex-col border border-slate-700 non-focus-area transition-all duration-500 self-start max-h-[85vh]">
                 <div class="p-4 border-b border-slate-700 flex flex-col gap-2">
                     <div class="flex justify-between items-center">
                         <div>
@@ -436,14 +413,14 @@
                            class="w-full bg-transparent text-sm text-white px-2 py-1 outline-none"
                            onkeypress="handleQuickAdd(event)">
                 </div>
-                <div id="backlog-list" class="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-900/30" 
+                <div id="backlog-list" class="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-900/30 min-h-[200px]" 
                      ondragover="allowDrop(event)" ondrop="drop(event, 'null')"></div>
             </aside>
 
-            <main class="flex-1 order-2 grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-4 transition-all duration-500 pb-20 md:pb-0 md:h-full md:overflow-hidden">
+            <main class="flex-1 order-2 grid grid-cols-1 lg:grid-cols-2 gap-4 transition-all duration-500 pb-10">
                 
-                <div id="q1-container" class="quadrant focus-area bg-red-900/10 border border-red-900/50 rounded-xl flex flex-col relative transition-all duration-500 min-h-[300px] md:min-h-0 md:h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q1')">
-                    <div class="p-3 flex justify-between items-center border-b border-red-900/30 bg-red-900/20 rounded-t-xl">
+                <div id="q1-container" class="quadrant focus-area bg-red-900/10 border border-red-900/50 rounded-xl flex flex-col relative transition-all duration-500 h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q1')">
+                    <div class="p-3 flex justify-between items-center border-b border-red-900/30 bg-red-900/20 rounded-t-xl shrink-0">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-red-500 animate-pulse">🚨</span>
                             <h3 id="title-q1" class="font-bold text-red-400 cursor-pointer" onclick="editTitle('q1')">Acil & Önemli</h3>
@@ -451,17 +428,17 @@
                         </div>
                         <div class="flex items-center gap-1">
                             <button onclick="clearQuadrant('q1')" class="text-red-400/60 hover:text-red-400 hover:bg-red-900/30 w-6 h-6 rounded flex items-center justify-center transition" title="Tümünü Temizle"><i class="fa-solid fa-trash-can text-xs"></i></button>
-                            <button onclick="addNewTaskDirectly('q1')" class="text-red-400 hover:bg-red-900/50 w-6 h-6 rounded flex items-center justify-center text-lg leading-none pb-0.5">+</button>
+                            <button onclick="addNewTaskDirectly('q1')" class="text-red-400 hover:bg-red-900/50 w-6 h-6 rounded">+</button>
                         </div>
                     </div>
-                    <div id="list-q1" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
+                    <div id="list-q1" class="flex-1 p-2 space-y-2 h-auto"></div>
                     <div id="zenExitOverlay" class="absolute bottom-4 right-4 hidden">
                          <button onclick="toggleZenMode()" class="bg-slate-800 text-slate-200 px-4 py-2 rounded-full shadow-xl border border-slate-600 text-sm font-bold hover:bg-slate-700">Odaktan Çık</button>
                     </div>
                 </div>
 
-                <div id="q2-container" class="quadrant non-focus-area bg-blue-900/10 border border-blue-900/50 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0 md:h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q2')">
-                    <div class="p-3 flex justify-between items-center border-b border-blue-900/30 bg-blue-900/20 rounded-t-xl">
+                <div id="q2-container" class="quadrant non-focus-area bg-blue-900/10 border border-blue-900/50 rounded-xl flex flex-col transition-all duration-500 h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q2')">
+                    <div class="p-3 flex justify-between items-center border-b border-blue-900/30 bg-blue-900/20 rounded-t-xl shrink-0">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-blue-500">📅</span>
                             <h3 id="title-q2" class="font-bold text-blue-400 cursor-pointer" onclick="editTitle('q2')">Acil Değil & Önemli</h3>
@@ -469,14 +446,14 @@
                         </div>
                         <div class="flex items-center gap-1">
                             <button onclick="clearQuadrant('q2')" class="text-blue-400/60 hover:text-blue-400 hover:bg-blue-900/30 w-6 h-6 rounded flex items-center justify-center transition" title="Tümünü Temizle"><i class="fa-solid fa-trash-can text-xs"></i></button>
-                            <button onclick="addNewTaskDirectly('q2')" class="text-blue-400 hover:bg-blue-900/50 w-6 h-6 rounded flex items-center justify-center text-lg leading-none pb-0.5">+</button>
+                            <button onclick="addNewTaskDirectly('q2')" class="text-blue-400 hover:bg-blue-900/50 w-6 h-6 rounded">+</button>
                         </div>
                     </div>
-                    <div id="list-q2" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
+                    <div id="list-q2" class="flex-1 p-2 space-y-2 h-auto"></div>
                 </div>
 
-                <div id="q3-container" class="quadrant non-focus-area bg-yellow-900/10 border border-yellow-900/50 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0 md:h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q3')">
-                    <div class="p-3 flex justify-between items-center border-b border-yellow-900/30 bg-yellow-900/20 rounded-t-xl">
+                <div id="q3-container" class="quadrant non-focus-area bg-yellow-900/10 border border-yellow-900/50 rounded-xl flex flex-col transition-all duration-500 h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q3')">
+                    <div class="p-3 flex justify-between items-center border-b border-yellow-900/30 bg-yellow-900/20 rounded-t-xl shrink-0">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-yellow-500">⚡</span>
                             <h3 id="title-q3" class="font-bold text-yellow-400 cursor-pointer" onclick="editTitle('q3')">Acil & Önemsiz</h3>
@@ -484,14 +461,14 @@
                         </div>
                         <div class="flex items-center gap-1">
                             <button onclick="clearQuadrant('q3')" class="text-yellow-400/60 hover:text-yellow-400 hover:bg-yellow-900/30 w-6 h-6 rounded flex items-center justify-center transition" title="Tümünü Temizle"><i class="fa-solid fa-trash-can text-xs"></i></button>
-                            <button onclick="addNewTaskDirectly('q3')" class="text-yellow-400 hover:bg-yellow-900/50 w-6 h-6 rounded flex items-center justify-center text-lg leading-none pb-0.5">+</button>
+                            <button onclick="addNewTaskDirectly('q3')" class="text-yellow-400 hover:bg-yellow-900/50 w-6 h-6 rounded">+</button>
                         </div>
                     </div>
-                    <div id="list-q3" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
+                    <div id="list-q3" class="flex-1 p-2 space-y-2 h-auto"></div>
                 </div>
 
-                <div id="q4-container" class="quadrant non-focus-area bg-gray-800/30 border border-gray-700 rounded-xl flex flex-col transition-all duration-500 min-h-[300px] md:min-h-0 md:h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q4')">
-                    <div class="p-3 flex justify-between items-center border-b border-gray-700 bg-gray-800/50 rounded-t-xl">
+                <div id="q4-container" class="quadrant non-focus-area bg-gray-800/30 border border-gray-700 rounded-xl flex flex-col transition-all duration-500 h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q4')">
+                    <div class="p-3 flex justify-between items-center border-b border-gray-700 bg-gray-800/50 rounded-t-xl shrink-0">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-gray-500">🗑️</span>
                             <h3 id="title-q4" class="font-bold text-gray-400 cursor-pointer" onclick="editTitle('q4')">Acil Değil & Önemsiz</h3>
@@ -501,7 +478,7 @@
                             <i class="fa-solid fa-trash"></i> Temizle
                         </button>
                     </div>
-                    <div id="list-q4" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
+                    <div id="list-q4" class="flex-1 p-2 space-y-2 h-auto"></div>
                 </div>
             </main>
         </div>
