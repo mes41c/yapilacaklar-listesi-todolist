@@ -3,6 +3,8 @@ const ASSETS = [
   './',
   './index.html',
   './matrix.html',
+  './192x192.png',   // <-- YENİ EKLENDİ
+  './512x512a.jpg',
   // SADECE kesin var olanları ve dış kaynakları ekliyoruz
   'https://cdn.tailwindcss.com',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
@@ -52,3 +54,4 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
