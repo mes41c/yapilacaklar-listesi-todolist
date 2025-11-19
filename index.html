@@ -1744,8 +1744,19 @@
         <p class="text-xs sm:text-sm text-white opacity-80">Yapılacaklar Listesi &copy; 2024</p>
     </footer>
 
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('Offline Mod Hazır: ', reg.scope))
+                .catch(err => console.log('SW Hatası: ', err));
+        });
+    }
+</script>
+
 </body>
 </html>
+
 
 
 
