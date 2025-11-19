@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Eisenhower Matrisi v6.8 - Page Scroll</title>
+    <title>Komuta Merkezi - Eisenhower Matrisi</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -13,7 +13,8 @@
         import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { 
             getFirestore, collection, query, orderBy, onSnapshot, 
-            doc, updateDoc, addDoc, setDoc, deleteDoc, serverTimestamp, writeBatch 
+            doc, updateDoc, addDoc, setDoc, deleteDoc, serverTimestamp, writeBatch,
+            enableIndexedDbPersistence 
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -27,11 +28,23 @@
         
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+
+        // Çevrimdışı Veri Desteği (Offline Persistence)
+        enableIndexedDbPersistence(db).catch((err) => {
+            if (err.code == 'failed-precondition') {
+                console.log('Çoklu sekme açık, offline mod devre dışı.');
+            } else if (err.code == 'unimplemented') {
+                console.log('Tarayıcı desteklemiyor.');
+            }
+        });
+
         const auth = getAuth(app);
         const appId = 'todo-app-rebuild-final-v2';
 
         let userId = null;
         let localTasks = [];
+        
+        // --- CONFIG STATE ---
         let wipLimit = 3;
         let defaultCategories = [
             { id: 'genel', name: 'Genel', color: 'bg-gray-600' },
@@ -41,11 +54,13 @@
         ];
         let categories = defaultCategories;
         let titles = { q1: "Acil & Önemli", q2: "Acil Değil & Önemli", q3: "Acil & Önemsiz", q4: "Acil Değil & Önemsiz" };
+        
         let currentFilter = 'all';
         let currentSort = 'date-desc'; 
         let isZenMode = false;
         let timerInterval = null;
 
+        // --- AUTH ---
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 userId = user.uid;
@@ -111,6 +126,7 @@
             const newLimit = parseInt(input);
             if (!isNaN(newLimit) && newLimit > 0) { saveSettings({ wipLimit: newLimit }); showToast(`🔥 Q1 Limiti güncelleniyor...`); }
         }
+        
         window.addNewCategory = function() {
             const name = prompt("Kategori adı:");
             if (!name || name.trim() === "") return;
@@ -120,6 +136,7 @@
             const newCats = [...categories, { id, name: name.trim(), color: randomColor }];
             saveSettings({ categories: newCats }); showToast(`"${name}" eklendi.`);
         }
+        
         window.editTitle = function(qId) {
             const current = document.getElementById(`title-${qId}`).innerText;
             const newVal = prompt("Bölüm İsmini Değiştir:", current);
@@ -154,7 +171,7 @@
         }
 
         function updateTitleTexts() { Object.keys(titles).forEach(key => { const el = document.getElementById(`title-${key}`); if(el) el.textContent = titles[key]; }); }
-        
+
         function getRottingClass(task) {
             if (!task.createdAt || task.completed) return '';
             const createdMs = task.createdAt.toMillis ? task.createdAt.toMillis() : (task.createdAt?.seconds * 1000 || Date.now());
@@ -182,7 +199,7 @@
             if ((task.matrixQuadrant === 'q1' || task.matrixQuadrant === 'q2') && !task.completed) {
                 focusBtn = `<button onclick="openPomodoroModal('${task.id}', '${task.text.replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-red-400 transition ml-2 p-1" title="Odaklan"><i class="fa-regular fa-clock"></i></button>`;
             }
-
+            
             const completeIconClass = task.completed ? "fa-solid fa-circle-check text-green-500" : "fa-regular fa-circle text-slate-500 hover:text-green-400";
 
             div.innerHTML = `
@@ -206,7 +223,7 @@
             return div;
         }
 
-        // --- UTILS ---
+        // --- UTILS & HELPERS ---
         window.openBrainDump = function() { document.getElementById('brainDumpModal').classList.remove('hidden'); document.getElementById('brainDumpInput').focus(); }
         window.processBrainDump = async function() {
             const input = document.getElementById('brainDumpInput');
@@ -241,7 +258,9 @@
 
         window.changeSort = function(val) { currentSort = val; renderAll(); }
         let currentTaskName = ""; let focusTime = 25 * 60;
+        
         window.openPomodoroModal = function(id, text) { currentTaskName = text; document.getElementById('pomodoroModal').classList.remove('hidden'); document.getElementById('pomoTaskTitle').textContent = text; document.getElementById('pomoInput').value = 25; }
+        
         window.startFocus = function() {
             const mins = parseInt(document.getElementById('pomoInput').value) || 25;
             focusTime = mins * 60;
@@ -253,6 +272,7 @@
                 if (focusTime <= 0) { clearInterval(timerInterval); new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play().catch(()=>{}); alert("Süre Doldu!"); closeFocus(); }
             }, 1000);
         }
+        
         function updateTimerDisplay() { const m = Math.floor(focusTime / 60).toString().padStart(2, '0'); const s = (focusTime % 60).toString().padStart(2, '0'); document.getElementById('timerDisplay').textContent = `${m}:${s}`; document.title = `${m}:${s} - Odaklan`; }
         window.closeFocus = function() { clearInterval(timerInterval); document.getElementById('focusOverlay').classList.add('hidden'); document.title = "Komuta Merkezi"; }
         window.closeModal = function(id) { document.getElementById(id).classList.add('hidden'); }
@@ -275,6 +295,7 @@
             try { await addDoc(collection(db, "artifacts", appId, "users", userId, "todos"), { text: text, completed: false, createdAt: serverTimestamp(), matrixQuadrant: quadrant, tag: newTag }); } catch (e) { showToast("Hata: " + e.message); }
         }
         window.deleteTask = async function(id) { if(!confirm('Silinsin mi?')) return; try { await deleteDoc(doc(db, "artifacts", appId, "users", userId, "todos", id)); } catch(e) { showToast("Silinemedi: " + e.message); } }
+        
         window.drop = async function(e, targetQuadrant) {
             e.preventDefault(); const taskId = e.dataTransfer.getData("text/plain"); if (!taskId) return; const realTarget = targetQuadrant === 'null' ? null : targetQuadrant;
             if (realTarget === 'q1') { const task = localTasks.find(t => t.id === taskId); const currentQ1Count = localTasks.filter(t => t.matrixQuadrant === 'q1').length; if (task && task.matrixQuadrant !== 'q1' && currentQ1Count >= wipLimit) { showToast(`⚠️ Q1 Limiti (${wipLimit}) Dolu.`); return; } }
@@ -346,14 +367,14 @@
         .kbd-key { background: #1e293b; border: 1px solid #475569; border-radius: 4px; padding: 2px 6px; font-family: monospace; font-size: 0.8rem; color: #cbd5e1; }
     </style>
 </head>
-<body class="bg-gray-900 min-h-screen flex flex-col text-gray-200 overflow-y-auto">
+<body class="bg-gray-900 min-h-screen flex flex-col text-gray-200 overflow-y-auto md:overflow-hidden">
 
     <div id="authLoading" class="fixed inset-0 flex items-center justify-center bg-gray-900 z-50">
         <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
     </div>
 
-    <div id="appContent" class="flex flex-col min-h-screen hidden p-4 max-w-[1920px] mx-auto w-full">
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 shrink-0 non-focus-area transition-opacity duration-300">
+    <div id="appContent" class="flex flex-col h-full hidden p-4 max-w-[1920px] mx-auto w-full">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4 shrink-0 non-focus-area transition-opacity duration-300">
             <div class="flex items-center gap-4 overflow-x-auto pb-1 w-full md:w-auto no-scrollbar">
                 <div class="flex items-center gap-2 shrink-0">
                     <a href="index.html" class="text-slate-400 hover:text-white transition"><i class="fa-solid fa-arrow-left"></i></a>
@@ -391,9 +412,9 @@
             </div>
         </header>
 
-        <div class="flex flex-col md:flex-row flex-1 gap-6 relative">
+        <div class="flex flex-col md:flex-row flex-1 gap-4 relative">
             
-            <aside class="w-full md:w-1/4 md:sticky md:top-4 bg-slate-800 rounded-xl shadow-lg flex flex-col border border-slate-700 non-focus-area transition-all duration-500 self-start max-h-[85vh]">
+            <aside class="w-full md:w-1/4 bg-slate-800 rounded-xl shadow-lg flex flex-col border border-slate-700 non-focus-area transition-all duration-500 md:h-full order-1 shrink-0 max-h-[35vh] md:max-h-full overflow-hidden">
                 <div class="p-4 border-b border-slate-700 flex flex-col gap-2">
                     <div class="flex justify-between items-center">
                         <div>
@@ -413,13 +434,13 @@
                            class="w-full bg-transparent text-sm text-white px-2 py-1 outline-none"
                            onkeypress="handleQuickAdd(event)">
                 </div>
-                <div id="backlog-list" class="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-900/30 min-h-[200px]" 
+                <div id="backlog-list" class="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-900/30" 
                      ondragover="allowDrop(event)" ondrop="drop(event, 'null')"></div>
             </aside>
 
-            <main class="flex-1 order-2 grid grid-cols-1 lg:grid-cols-2 gap-4 transition-all duration-500 pb-10">
+            <main class="flex-1 order-2 grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-4 transition-all duration-500 pb-20 md:pb-0 md:h-full md:overflow-hidden">
                 
-                <div id="q1-container" class="quadrant focus-area bg-red-900/10 border border-red-900/50 rounded-xl flex flex-col relative transition-all duration-500 h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q1')">
+                <div id="q1-container" class="quadrant focus-area bg-red-900/10 border border-red-900/50 rounded-xl flex flex-col relative overflow-hidden transition-all duration-500 h-[350px] md:h-full min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q1')">
                     <div class="p-3 flex justify-between items-center border-b border-red-900/30 bg-red-900/20 rounded-t-xl shrink-0">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-red-500 animate-pulse">🚨</span>
@@ -431,13 +452,13 @@
                             <button onclick="addNewTaskDirectly('q1')" class="text-red-400 hover:bg-red-900/50 w-6 h-6 rounded">+</button>
                         </div>
                     </div>
-                    <div id="list-q1" class="flex-1 p-2 space-y-2 h-auto"></div>
+                    <div id="list-q1" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                     <div id="zenExitOverlay" class="absolute bottom-4 right-4 hidden">
                          <button onclick="toggleZenMode()" class="bg-slate-800 text-slate-200 px-4 py-2 rounded-full shadow-xl border border-slate-600 text-sm font-bold hover:bg-slate-700">Odaktan Çık</button>
                     </div>
                 </div>
 
-                <div id="q2-container" class="quadrant non-focus-area bg-blue-900/10 border border-blue-900/50 rounded-xl flex flex-col transition-all duration-500 h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q2')">
+                <div id="q2-container" class="quadrant non-focus-area bg-blue-900/10 border border-blue-900/50 rounded-xl flex flex-col overflow-hidden transition-all duration-500 h-[350px] md:h-full min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q2')">
                     <div class="p-3 flex justify-between items-center border-b border-blue-900/30 bg-blue-900/20 rounded-t-xl shrink-0">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-blue-500">📅</span>
@@ -449,10 +470,10 @@
                             <button onclick="addNewTaskDirectly('q2')" class="text-blue-400 hover:bg-blue-900/50 w-6 h-6 rounded">+</button>
                         </div>
                     </div>
-                    <div id="list-q2" class="flex-1 p-2 space-y-2 h-auto"></div>
+                    <div id="list-q2" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
 
-                <div id="q3-container" class="quadrant non-focus-area bg-yellow-900/10 border border-yellow-900/50 rounded-xl flex flex-col transition-all duration-500 h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q3')">
+                <div id="q3-container" class="quadrant non-focus-area bg-yellow-900/10 border border-yellow-900/50 rounded-xl flex flex-col overflow-hidden transition-all duration-500 h-[350px] md:h-full min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q3')">
                     <div class="p-3 flex justify-between items-center border-b border-yellow-900/30 bg-yellow-900/20 rounded-t-xl shrink-0">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-yellow-500">⚡</span>
@@ -464,10 +485,10 @@
                             <button onclick="addNewTaskDirectly('q3')" class="text-yellow-400 hover:bg-yellow-900/50 w-6 h-6 rounded">+</button>
                         </div>
                     </div>
-                    <div id="list-q3" class="flex-1 p-2 space-y-2 h-auto"></div>
+                    <div id="list-q3" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
 
-                <div id="q4-container" class="quadrant non-focus-area bg-gray-800/30 border border-gray-700 rounded-xl flex flex-col transition-all duration-500 h-full" ondragover="allowDrop(event)" ondrop="drop(event, 'q4')">
+                <div id="q4-container" class="quadrant non-focus-area bg-gray-800/30 border border-gray-700 rounded-xl flex flex-col overflow-hidden transition-all duration-500 h-[350px] md:h-full min-h-0" ondragover="allowDrop(event)" ondrop="drop(event, 'q4')">
                     <div class="p-3 flex justify-between items-center border-b border-gray-700 bg-gray-800/50 rounded-t-xl shrink-0">
                         <div class="flex items-center gap-2 flex-1">
                             <span class="text-gray-500">🗑️</span>
@@ -478,7 +499,7 @@
                             <i class="fa-solid fa-trash"></i> Temizle
                         </button>
                     </div>
-                    <div id="list-q4" class="flex-1 p-2 space-y-2 h-auto"></div>
+                    <div id="list-q4" class="flex-1 min-h-0 p-2 space-y-2 overflow-y-auto"></div>
                 </div>
             </main>
         </div>
@@ -579,5 +600,15 @@
     <div id="toast" class="fixed bottom-5 right-5 bg-red-600 text-white px-4 py-3 rounded-lg shadow-2xl transform translate-y-20 opacity-0 transition-all duration-300 z-50 font-semibold flex items-center gap-2">
         <i class="fa-solid fa-circle-exclamation"></i> <span id="toastMsg">Hata</span>
     </div>
+    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('Offline mod hazır:', reg.scope))
+                    .catch(err => console.log('Service Worker hatası:', err));
+            });
+        }
+    </script>
 </body>
 </html>
